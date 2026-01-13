@@ -1,0 +1,13 @@
+date: 2026-01-12
+
+
+Today, I want to accomplish the following:
+
+* Spec out the basic patchboard router
+  - version number
+  - core of it
+  - in JSON format
+  - in .md format
+  - chart out the additions available in other specs
+
+* Relocate the notes I had earlier.

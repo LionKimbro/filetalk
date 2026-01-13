@@ -1,0 +1,61 @@
+{
+  "specification": {
+    "name": "FileTalk Core",
+    "version": "v1",
+    "title": "FileTalk Core Message Specification",
+    "created": "2026-01-12",
+    "authors": [
+      "Lion Kimbro",
+      "ChatGPT (Wing-Cat)"
+    ],
+    "scope": "epoch-agnostic",
+    "status": "stable"
+  },
+
+  "message_definition": {
+    "type": "json_object",
+    "required_fields": {
+      "channel": {
+        "type": "string",
+        "description": "Opaque routing identifier used by external delivery mechanisms"
+      },
+      "signal": {
+        "type": "any_json",
+        "description": "Payload carried by the message; all semantic meaning resides here"
+      },
+      "timestamp": {
+        "type": "string",
+        "description": "Unix time in seconds since epoch; may include fractional seconds"
+      }
+    }
+  },
+
+  "constraints": {
+    "valid_message": [
+      "Must be a valid JSON object",
+      "Must include all required fields",
+      "Must not require interpretation of channel value by the sender or receiver",
+      "Must treat channel as opaque"
+    ]
+  },
+
+  "explicit_non_goals": [
+    "Routing semantics",
+    "Transport mechanisms",
+    "Filesystem conventions",
+    "In-memory bus definitions",
+    "Delivery guarantees",
+    "Ordering guarantees",
+    "Reliability or retry semantics",
+    "Message identifiers",
+    "Tracing or provenance",
+    "Heartbeat or liveness signaling",
+    "Introspection or self-description",
+    "Security, authentication, or authorization"
+  ],
+
+  "compatibility": {
+    "forward_compatibility": "Additional fields may be added by higher-level specifications or profiles without invalidating core compliance",
+    "backward_compatibility": "Messages conforming to this specification remain valid across future epochs provided required fields are unchanged"
+  }
+}

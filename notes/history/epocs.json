@@ -1,0 +1,16 @@
+{
+  "document": {
+    "title": "Epochs of FileTalk Development",
+    "created": "2026-01-12"
+  },
+  "epochs": {
+    "epoch 5": {
+      "began": "2026-01",
+      "focus": "public presentation; sharing the core protocol",
+      "actions": {
+        "division of core spec": "divided the Epoch 3 spec into a core specification, and then auxiliar specs",
+        "share on github": ""
+      }
+    }
+  }
+}

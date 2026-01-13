@@ -1,0 +1,174 @@
+{
+  "date": "2026-01-12",
+  "parts-of-discussion": {
+    "segregating filetalk core": {
+      "proposal": {
+        "goal": "Separate FileTalk Core from Epoch 3 Patchboard architecture",
+        "constraint": {
+          "core_fields_only": [
+            "channel",
+            "signal",
+            "timestamp"
+          ]
+        }
+      },
+      "filetalk_core_spec": {
+        "name": "FileTalk Core v1",
+        "scope": "epoch-agnostic",
+        "message_definition": {
+          "type": "json_object",
+          "required_fields": {
+            "channel": {
+              "type": "string",
+              "description": "Opaque routing identifier used by external delivery mechanisms"
+            },
+            "signal": {
+              "type": "any_json",
+              "description": "Payload carried by the message; all semantic meaning resides here"
+            },
+            "timestamp": {
+              "type": "string",
+              "description": "Unix time in seconds since epoch; may include fractional seconds"
+            }
+          }
+        },
+        "exclusions": [
+          "routing",
+          "filesystem semantics",
+          "directories",
+          "heartbeats",
+          "trace",
+          "message ids",
+          "introspection",
+          "delivery guarantees"
+        ],
+        "philosophy": {
+          "transport_agnosticism": {
+            "title": "Transport-Agnostic Message Semantics",
+            "description": "FileTalk defines the shape and meaning of messages independently of how those messages are transported. A message’s structure and interpretation do not depend on whether it is conveyed via filesystem operations, in-memory queues, inter-process mechanisms, or other delivery substrates. Transport is treated as an external concern, allowing the same components to operate unchanged across different execution environments."
+          },
+          "opaque_routing_channels": {
+            "title": "Opaque Routing Channels",
+            "description": "Channels in FileTalk are opaque routing identifiers, not semantic labels or topics. Components emit messages onto channels without interpreting their meaning or destination. Routing logic, including channel remapping or fan-out, is performed entirely by external mechanisms. This separation prevents components from entangling business logic with delivery topology."
+          },
+          "transparent_remapping": {
+            "title": "Transparent Remapping of Components",
+            "description": "FileTalk components are designed to be remappable across routing and transport contexts without modification. A component that communicates via in-memory routing within a single process may be transparently reconfigured to communicate via filesystem-based message exchange, or vice versa, without altering its internal logic. This enables gradual scaling, experimentation, and reuse without architectural fracture."
+          },
+          "message_over_mechanism": {
+            "title": "Messages Over Mechanisms",
+            "description": "FileTalk prioritizes stable message structure over fixed delivery mechanisms. By keeping the core message definition minimal and independent of infrastructure, FileTalk encourages systems where behavior emerges from message flow and external configuration rather than from tightly coupled runtime machinery."
+          }
+        }
+      },
+      "auxiliary_specs": {
+        "file_transport_profile": {
+          "name": "FileTalk File Transport Profile",
+          "depends_on": [
+            "FileTalk Core v1"
+          ],
+          "concerns": [
+            "serialization of messages as .json files",
+            "atomic file appearance",
+            "directory polling",
+            "skipping partially written or invalid JSON",
+            "retry behavior"
+          ],
+          "explicitly_not_core": true
+        },
+        "patchboard_routing_profile": {
+          "name": "Patchboard Routing Profile",
+          "epoch": 3,
+          "depends_on": [
+            "FileTalk Core v1",
+            "FileTalk File Transport Profile"
+          ],
+          "concerns": [
+            "OUTBOX / INCOMING directories",
+            "externalized routing",
+            "patch map based dispatch",
+            "fan-out and duplication",
+            "discarding unrouted messages",
+            "optional transformation during routing"
+          ],
+          "role": "Defines the Patchboard Paradigm",
+          "explicitly_not_core": true
+        },
+        "message_enrichment_conventions": {
+          "name": "Message Enrichment Conventions",
+          "optional_fields": [
+            "id",
+            "trace"
+          ],
+          "rules": [
+            "Messages lacking enrichment fields remain valid",
+            "Trace is opt-in and append-only",
+            "Routers and modules may append trace entries"
+          ],
+          "explicitly_not_core": true
+        },
+        "health_signaling_profile": {
+          "name": "Health & Liveness Signaling Profile",
+          "depends_on": [
+            "FileTalk Core v1"
+          ],
+          "conventions": [
+            "heartbeat messages via channel 'heartbeat'",
+            "next_due timestamps",
+            "restart command hints",
+            "watchdog and monitoring modules"
+          ],
+          "explicitly_not_core": true
+        },
+        "introspection_profile": {
+          "name": "Introspection & Self-Description Profile",
+          "files": [
+            "status.json",
+            "errors.jsonl",
+            "describe.json",
+            "module.json"
+          ],
+          "concerns": [
+            "module identity",
+            "capabilities",
+            "health state",
+            "recreation metadata"
+          ],
+          "explicitly_not_core": true
+        }
+      },
+      "epoch_definitions": {
+        "epoch_3": {
+          "description": "Patchboard Architecture",
+          "composed_of": [
+            "FileTalk Core v1",
+            "FileTalk File Transport Profile",
+            "Patchboard Routing Profile"
+          ],
+          "recommended_profiles": [
+            "Message Enrichment Conventions",
+            "Health & Liveness Signaling Profile",
+            "Introspection & Self-Description Profile"
+          ]
+        },
+        "epoch_5_notes": {
+          "began": "2026-01",
+          "focus": "Public presentation and sharing of FileTalk Core",
+          "actions": {
+            "division_of_core_spec": "Extracted minimal FileTalk Core (channel, signal, timestamp) from Epoch 3 Patchboard architecture",
+            "public_sharing": "Prepare core and auxiliary specs for GitHub publication"
+          }
+        }
+      },
+      "architectural_outcome": {
+        "benefits": [
+          "Clear separation of ontology and infrastructure",
+          "Epochs become composable bundles",
+          "Lower cognitive and technical barrier to entry",
+          "Multiple adoption paths into the ecosystem"
+        ],
+        "conceptual_shift": "From single implementation to protocol family"
+      }
+    }
+  }
+}

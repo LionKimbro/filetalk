@@ -1,0 +1,58 @@
+{
+  "created": "2026-01-12",
+  "specification_structure": {
+    "parallel_specs": {
+      "title": "Parallel Specification Artifacts",
+      "description": "FileTalk specifications are maintained in two parallel forms: a machine-readable JSON specification and a human-readable Markdown specification. These documents describe the same versioned specification from complementary perspectives and are intended to coexist permanently."
+    },
+
+    "json_spec": {
+      "role": "machine_truth",
+      "purpose": [
+        "Define exact message structure and constraints",
+        "Enable validation, tooling, and code generation",
+        "Serve as a stable contract for implementers"
+      ],
+      "characteristics": [
+        "Formal and minimal",
+        "No explanatory prose",
+        "No rationale or philosophy",
+        "Normative and authoritative"
+      ],
+      "constraints": [
+        "Must not contain examples requiring interpretation",
+        "Must not justify or explain design decisions",
+        "Must change conservatively and infrequently"
+      ]
+    },
+
+    "markdown_spec": {
+      "role": "human_truth",
+      "purpose": [
+        "Explain intent, philosophy, and non-goals",
+        "Provide examples and usage guidance",
+        "Warn against common misinterpretations"
+      ],
+      "characteristics": [
+        "Narrative and explanatory",
+        "May include diagrams, examples, and essays",
+        "May evolve independently of tooling concerns"
+      ],
+      "constraints": [
+        "Must not contradict the JSON specification",
+        "Must defer to JSON for all normative definitions"
+      ]
+    },
+
+    "governing_principles": {
+      "principle_1": {
+        "name": "Separation of Contract and Explanation",
+        "statement": "The JSON specification defines what is valid; the Markdown specification explains why it is defined that way. Neither document substitutes for the other."
+      },
+      "principle_2": {
+        "name": "Single Source of Normative Truth",
+        "statement": "In the event of disagreement, the JSON specification is authoritative. The Markdown specification must be updated to reflect the JSON specification, never the reverse."
+      }
+    }
+  }
+}
