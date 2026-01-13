@@ -1,0 +1,117 @@
+{
+  "specification": {
+    "name": "FileTalk File Transport Profile",
+    "version": "v1",
+    "title": "FileTalk File Transport Profile",
+    "created": "2026-01-13",
+    "authors": [
+      "Lion Kimbro",
+      "ChatGPT (Wing-Cat)"
+    ],
+    "scope": "transport profile",
+    "depends_on": [
+      "FileTalk Core v1"
+    ],
+    "status": "stable"
+  },
+  "transport_model": {
+    "medium": "filesystem",
+    "encoding": "json",
+    "unit_of_transport": "file"
+  },
+  "message_representation": {
+    "file_format": {
+      "extension": ".json",
+      "encoding": "UTF-8",
+      "content": "A single FileTalk Core message encoded as a JSON object"
+    }
+  },
+  "filename_requirements": {
+    "uniqueness": {
+      "rule": "All message filenames within a given directory must be unique",
+      "naming_scheme": "Implementation-defined"
+    }
+  },
+  "directory_conventions": {
+    "outgoing": {
+      "name": "OUTBOX",
+      "role": "Directory into which a component writes outgoing message files",
+      "ownership": "Conceptually owned by the component for writing"
+    },
+    "incoming": {
+      "name": "INCOMING",
+      "role": "Directory from which a component reads incoming message files",
+      "ownership": "Conceptually owned by the component for reading"
+    }
+  },
+  "write_requirements": {
+    "rules": [
+      "Messages must be written as JSON files conforming to FileTalk Core v1",
+      "Files may become visible to consumers before the write is complete",
+      "A message file is considered complete when it can be parsed as a valid JSON object"
+    ],
+    "discouraged_practices": [
+      "Temporary filenames followed by atomic rename",
+      "Any mechanism that causes files to disappear after becoming visible but before parsing completes"
+    ]
+  },
+  "read_requirements": {
+    "rules": [
+      "Consumers must treat each file as an independent message",
+      "Consumers must attempt to parse files as JSON objects",
+      "Files that fail to parse must be presumed incomplete and retried later",
+      "Consumers must not assume filesystem ordering reflects message order"
+    ],
+    "ordering": {
+      "recommendation": "Consumers SHOULD attempt to process messages in timestamp order when practical",
+      "guarantee": "No ordering guarantees are provided by the transport"
+    }
+  },
+  "message_lifecycle": {
+    "completion_invariant": "A message file must not remain in the directory after it has been fully processed",
+    "allowed_actions": [
+      "Delete the message file",
+      "Move the message file to an archive location",
+      "Rename the message file such that it leaves the directory"
+    ]
+  },
+  "consumer_coordination": {
+    "cardinality": "Multiple consumers may observe message files",
+    "responsibility": "Exactly one actor is responsible for removing a processed message file",
+    "coordination": "Consumer coordination is external to this transport profile"
+  },
+  "polling_model": {
+    "delivery": "pull-based",
+    "timing": "implementation-defined",
+    "guarantees": [
+      "No real-time guarantees",
+      "No ordering guarantees"
+    ]
+  },
+  "constraints": {
+    "transport_scope": [
+      "Defines filesystem-based transport only",
+      "Does not define routing behavior",
+      "Does not define fan-out or duplication",
+      "Does not define directory topology beyond INCOMING and OUTBOX"
+    ]
+  },
+  "explicit_non_goals": {
+    "description": "Behaviors and guarantees intentionally excluded from this transport profile",
+    "items": [
+      "Routing semantics",
+      "Patchboard or switchboard behavior",
+      "Message transformation",
+      "Deduplication",
+      "Delivery acknowledgments",
+      "Reliability guarantees",
+      "Concurrency control beyond filesystem semantics",
+      "Security, permissions, or access control",
+      "Monitoring, health signaling, or introspection"
+    ]
+  },
+  "compatibility": {
+    "core_compliance": "All transported messages must conform to FileTalk Core v1",
+    "forward_compatibility": "Additional transport conventions may be layered without invalidating this profile"
+  }
+}

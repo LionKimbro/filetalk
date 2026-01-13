@@ -1,7 +1,10 @@
 {
-  "date": "2026-01-12",
-  "parts-of-discussion": {
-    "segregating filetalk core": {
+  "document": {
+    "date": "2026-01-12",
+    "chat-gpt": "https://chatgpt.com/c/6965ea37-c7e0-832e-a711-7be25ef8e012"
+  },
+  "parts_of_discussion": {
+    "segregating_filetalk_core": {
       "proposal": {
         "goal": "Separate FileTalk Core from Epoch 3 Patchboard architecture",
         "constraint": {
@@ -10,6 +13,12 @@
             "signal",
             "timestamp"
           ]
+        }
+      },
+      "references": {
+        "2025-06-05_epoch-3-architecture_v1.txt": {
+          "noted": "2026-01-12",
+          "note": "original specification describing the filetalk protocol, vision -- it was good, but a bit too expansive"
         }
       },
       "filetalk_core_spec": {

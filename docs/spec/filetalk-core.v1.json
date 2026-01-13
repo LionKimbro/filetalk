@@ -11,7 +11,6 @@
     "scope": "epoch-agnostic",
     "status": "stable"
   },
-
   "message_definition": {
     "type": "json_object",
     "required_fields": {
@@ -29,7 +28,6 @@
       }
     }
   },
-
   "constraints": {
     "valid_message": [
       "Must be a valid JSON object",
@@ -38,7 +36,6 @@
       "Must treat channel as opaque"
     ]
   },
-
   "explicit_non_goals": [
     "Routing semantics",
     "Transport mechanisms",
@@ -53,7 +50,6 @@
     "Introspection or self-description",
     "Security, authentication, or authorization"
   ],
-
   "compatibility": {
     "forward_compatibility": "Additional fields may be added by higher-level specifications or profiles without invalidating core compliance",
     "backward_compatibility": "Messages conforming to this specification remain valid across future epochs provided required fields are unchanged"
