@@ -1,0 +1,208 @@
+{
+  "doc": {
+    "meta": {
+      "title": "FileTalk Program Invocation Model",
+      "domain": ["FileTalk", "Invocation", "JSON Spec", "CLI", "GUI", "Execution Outputs"],
+      "status": "informational",
+      "related": ["FileTalk2025 Manifesto"]
+    },
+
+    "core_concept": {
+      "program_role": "persistent machine that accepts structured requests",
+      "invocation_unit": "JSON specification",
+      "execution_model": "submit request, produce outputs, publish summary",
+      "interface_role": "kicker that constructs and submits requests"
+    },
+
+    "specification": {
+      "format": "JSON",
+      "purpose": "complete description of requested operation",
+      "typical_fields": [
+        "command",
+        "inputs",
+        "outputs",
+        "modes",
+        "options",
+        "policies"
+      ],
+      "properties": [
+        "serializable",
+        "archivable",
+        "diffable",
+        "replayable"
+      ],
+      "sources": [
+        "CLI kicker",
+        "GUI kicker",
+        "saved config file",
+        "FileTalk message folder",
+        "other programs"
+      ]
+    },
+
+    "kickers": {
+      "definition": "tools that build JSON execution specifications",
+      "types": {
+        "cli": {
+          "role": "parse command-line tokens into structured spec",
+          "functions": [
+            "tokenize",
+            "normalize",
+            "apply defaults",
+            "validate",
+            "emit JSON"
+          ],
+          "notes": [
+            "acts as shorthand syntax for JSON construction",
+            "not canonical interface"
+          ]
+        },
+        "gui": {
+          "role": "visual constructor for same JSON spec",
+          "inputs": [
+            "program-declared schema",
+            "UI hints (optional)"
+          ],
+          "functions": [
+            "render widgets",
+            "collect user selections",
+            "assemble JSON",
+            "submit request"
+          ]
+        },
+        "automation": {
+          "role": "programmatic construction of requests",
+          "examples": [
+            "workflow tools",
+            "batch runners",
+            "schedulers"
+          ]
+        }
+      },
+      "constraints": [
+        "all kickers must produce equivalent JSON structure",
+        "program semantics must not depend on kicker type"
+      ]
+    },
+
+    "self_description": {
+      "capability": "program can emit schema of accepted request",
+      "contents": [
+        "field names",
+        "types",
+        "defaults",
+        "allowed values",
+        "structural grouping",
+        "UI hints (optional)"
+      ],
+      "uses": [
+        "auto-generated GUIs",
+        "validation tools",
+        "documentation",
+        "orchestration systems"
+      ],
+      "invocation": [
+        "run without arguments",
+        "explicit schema request mode"
+      ]
+    },
+
+    "invocation_transport": {
+      "direct_execution": {
+        "method": "spawn process with JSON input",
+        "typical_use": "interactive use, CLI workflows"
+      },
+      "filetalk_message": {
+        "method": "write JSON spec to input mailbox folder",
+        "typical_use": [
+          "automation",
+          "remote triggering",
+          "system orchestration"
+        ],
+        "properties": [
+          "decoupled",
+          "inspectable",
+          "retryable"
+        ]
+      }
+    },
+
+    "outputs": {
+      "genuine_output": {
+        "role": "domain work product",
+        "examples": [
+          "file",
+          "index",
+          "image",
+          "dataset",
+          "report"
+        ],
+        "properties": [
+          "persisted beyond execution",
+          "meaningful outside of program run",
+          "consumed by other tools or humans"
+        ]
+      },
+      "execution_summary": {
+        "role": "narrative of what occurred during run",
+        "structure": "JSON",
+        "contents": [
+          "result (success | failure)",
+          "warnings",
+          "errors",
+          "metrics",
+          "timestamps",
+          "environment notes"
+        ],
+        "uses": [
+          "dashboards",
+          "logs",
+          "orchestration decisions",
+          "user feedback"
+        ]
+      },
+      "separation_policy": [
+        "work product and operational narrative are distinct artifacts",
+        "summary must not replace genuine outputs",
+        "outputs must not be embedded in summary except as references"
+      ]
+    },
+
+    "system_ecology": {
+      "program_character": [
+        "long-lived",
+        "state-publishing",
+        "request-driven"
+      ],
+      "coordination_style": [
+        "mailbox-based message passing",
+        "shared visibility via files",
+        "poll-based synchronization"
+      ],
+      "composition_method": [
+        "connect output folders to input folders",
+        "aggregate summaries",
+        "route requests through control panels"
+      ]
+    },
+
+    "design_goals": {
+      "human_scale": [
+        "readable files",
+        "inspectable state",
+        "simple failure modes"
+      ],
+      "machine_scale": [
+        "structured contracts",
+        "replayable execution",
+        "composable tools"
+      ],
+      "infrastructure_avoidance": [
+        "no sockets",
+        "no servers",
+        "no brokers",
+        "no framework lock-in"
+      ]
+    }
+  }
+}
