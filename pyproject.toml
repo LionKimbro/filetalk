@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "filetalk"
+version = "0.1.0"
+description = "FileTalk: file-based, inspectable program ecosystems"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Lion Kimbro" }
+]
+
+dependencies = []
+
+[project.scripts]
+filetalk-runner = "filetalk_runner:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
