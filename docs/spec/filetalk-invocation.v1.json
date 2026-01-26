@@ -1,0 +1,169 @@
+{
+  "specification": {
+    "name": "FileTalk Invocation",
+    "version": "v0.1",
+    "title": "FileTalk Process Invocation and Summary Envelopes",
+    "created": "2026-01-26",
+    "authors": [
+      "Lion Kimbro",
+      "ChatGPT (Wing-Cat)"
+    ],
+    "scope": "epoch-agnostic",
+    "status": "stable",
+    "description": "Defines standard JSON envelopes for invoking FileTalk-compatible programs and for returning standardized execution summaries. Envelopes emphasize recognizability, optional observability, and progressive disclosure of complexity."
+  },
+  "invocation_envelope": {
+    "required_top_level_keys": [
+      "type",
+      "STANDARD",
+      "ARGS"
+    ],
+    "type_field": {
+      "required_value": "filetalk-program-invocation"
+    },
+    "STANDARD": {
+      "description": "Standard invocation metadata understood by FileTalk infrastructure and programs. All fields are optional.",
+      "fields_optional": {
+        "summary-file": {
+          "type": "string",
+          "description": "Filesystem path where the invoked program should write its execution summary JSON."
+        },
+        "timestamp-utc": {
+          "type": "string",
+          "description": "UTC timestamp when the invocation request was created. May include decimal fractions. Example: \"1737848123.527\""
+        },
+        "request-id": {
+          "type": "string",
+          "description": "Caller-generated identifier for correlating this invocation with summaries and logs."
+        }
+      },
+      "extension_policy": "Additional STANDARD fields may be added in future versions. Programs must ignore unknown keys."
+    },
+    "ARGS": {
+      "description": "Program-specific arguments. Structure is entirely defined by the invoked program.",
+      "type": "object",
+      "extension_policy": "FileTalk infrastructure must not interpret ARGS contents."
+    }
+  },
+  "summary_envelope": {
+    "required_top_level_keys": [
+      "type",
+      "STANDARD",
+      "CUSTOM"
+    ],
+    "type_field": {
+      "required_value": "filetalk-program-invocation-summary"
+    },
+    "STANDARD": {
+      "description": "Standard execution metadata and optional observability data. STANDARD must exist, but all contained fields are optional.",
+      "fields_optional": {
+        "complete": {
+          "type": "boolean",
+          "description": "True if the program completed its intended task. False if it failed or was aborted."
+        },
+        "status": {
+          "type": "string",
+          "description": "Optional textual status indicator such as \"ok\", \"generic-error\", \"partial-completion\", or program-defined states.",
+          "recommended-values": {
+            "ok": {},
+            "generic-error": {},
+            "invalid-invocation": {},
+            "external-dependency-failure": {},
+            "partial-completion": {}
+          }
+        },
+        "exit-code": {
+          "type": "integer",
+          "description": "Process exit code, if available.",
+          "recommended-values": {
+            "success (0)": "0",
+            "generic-error (1)": "1",
+            "invalid-invocation (2)": "2",
+            "external-dependency-failure (3)": "3",
+            "partial-completion (4)": "4"
+          }
+        },
+        "timestamp-utc": {
+          "type": "string",
+          "description": "UTC timestamp when the summary was written. May include decimal fractions."
+        },
+        "request-id": {
+          "type": "string",
+          "description": "Echo of the request_id from the invocation envelope, if provided."
+        },
+        "invocation": {
+          "type": "object",
+          "description": "Optional full copy of the invocation JSON envelope that initiated this execution."
+        },
+        "events": {
+          "type": "array",
+          "description": "Optional ordered list of human-readable execution notes. Narrative, not machine-parseable.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "complex-events": {
+          "type": "array",
+          "description": "Optional ordered list of structured execution events for machine processing and advanced observability.",
+          "items": {
+            "type": "object",
+            "required_keys": [
+              "timestamp_utc",
+              "level",
+              "kind",
+              "msg"
+            ],
+            "fields": {
+              "timestamp_utc": {
+                "type": "string",
+                "description": "UTC timestamp when this event occurred. May include decimal fractions."
+              },
+              "level": {
+                "type": "string",
+                "description": "Severity level such as \"info\", \"warn\", or \"error\"."
+              },
+              "kind": {
+                "type": "string",
+                "description": "Short type string identifying the class of event (e.g., \"file.copy\", \"task.start\")."
+              },
+              "tags": {
+                "type": "array",
+                "description": "Optional list of tag strings for filtering and grouping.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "msg": {
+                "type": "string",
+                "description": "Human-readable description of the event."
+              },
+              "data": {
+                "type": "object",
+                "description": "Optional structured data payload associated with the event."
+              }
+            }
+          }
+        }
+      },
+      "extension_policy": "Additional STANDARD fields may be added in future versions. Readers must ignore unknown keys."
+    },
+    "CUSTOM": {
+      "description": "Program-specific result data. Structure is entirely defined by the invoked program.",
+      "type": "object",
+      "extension_policy": "FileTalk infrastructure must not interpret CUSTOM contents."
+    }
+  },
+  "behavioral_contract": {
+    "invocation": [
+      "Caller must write a JSON file matching invocation_envelope and provide its path to the program.",
+      "Program must treat invocation_envelope as read-only.",
+      "If STANDARD.summary_file is provided, program should write its summary to that location."
+    ],
+    "summary": [
+      "Program should write exactly one summary JSON if possible.",
+      "Program may include any or none of the STANDARD optional fields.",
+      "Program-specific results must be placed under CUSTOM.",
+      "Programs and infrastructure must ignore unknown fields to preserve forward compatibility."
+    ]
+  }
+}
