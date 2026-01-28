@@ -13,7 +13,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog
 
-import filetalk_process.core as ftp
+import runcards.core as runcards
 
 
 g = {
@@ -1084,16 +1084,16 @@ args_stub = {
 }
 
 def main():
-    if not ftp.has_json_arg("j"):
-        ftp.print_stub(args_stub, "Sr")  # require summary file; optional request-id
+    if not runcards.has_json_arg("j"):
+        runcards.print_stub(args_stub, "Sr")  # require summary file; optional request-id
         return
 
     # Start FileTalk process for runner itself
-    ftp.start("cr")  # c=complex events, r=request-id
+    runcards.start("cr")  # c=complex events, r=request-id
 
     try:
         # read configuration from arguments
-        inv = ftp.g["invocation"]
+        inv = runcards.g["invocation"]
         cfg = g["config"] = inv["ARGS"]
         
         if "paths" not in cfg:
@@ -1132,10 +1132,10 @@ def main():
         raise
     except Exception as e:
         # unexpected; still write summary
-        ftp.record_exception()
-        ftp.output_summary("cte1")
+        runcards.record_exception()
+        runcards.output_summary("cte1")
     finally:
-        ftp.output_summary("cot0")  # (c)omplete, status: (o)k, (t)imestamp, exit code (0)
+        runcards.output_summary("cot0")  # (c)omplete, status: (o)k, (t)imestamp, exit code (0)
 
-    raise SystemExit(ftp.get("exit-code"))
+    raise SystemExit(runcards.get("exit-code"))
 

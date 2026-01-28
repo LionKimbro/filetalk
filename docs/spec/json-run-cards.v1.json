@@ -1,17 +1,19 @@
 {
   "specification": {
     "name": "JSON Run Cards",
-    "version": "v0.1",
-    "title": "JSON Run Cards: Process Invocation and Summary Envelopes",
-    "created": "2026-01-26",
+    "document_id": "runcards.spec.core_formats.v0_2",
+    "version": "v0.2",
+    "title": "JSON Run Cards: Job Cards and Report Cards",
+    "created": "2026-01-27",
     "authors": [
       "Lion Kimbro",
       "ChatGPT (Wing-Cat)"
     ],
     "scope": "epoch-agnostic",
     "status": "stable",
-    "description": "Defines standard JSON envelopes for invoking programs (called 'job cards') and for returning standardized execution summaries (called 'report cards')."
+    "description": "Defines standard JSON envelopes for invoking programs (called 'job cards') and for returning standardized execution results (called 'report cards')."
   },
+
   "job-card": {
     "required_top_level_keys": [
       "type",
@@ -22,19 +24,19 @@
       "required_value": "json-job-card"
     },
     "STANDARD": {
-      "description": "Standard invocation metadata understood by JSON Run Card infrastructure and programs. All fields are optional.",
+      "description": "Standard invocation metadata understood by Run Card infrastructure and programs. All fields are optional unless otherwise specified by program contracts.",
       "fields_optional": {
         "report-card-file": {
           "type": "string",
           "description": "Filesystem path where the invoked program should write its report card."
         },
-        "timestamp-utc": {
+        "timestamp": {
           "type": "string",
-          "description": "UTC timestamp when the invocation request was created. May include decimal fractions. Example: \"1737848123.527\""
+          "description": "Timestamp when the job card was created, expressed as seconds since Unix epoch with optional decimal fractions. Example: \"1737848123.527000\""
         },
-        "request-id": {
+        "job-id": {
           "type": "string",
-          "description": "Caller-generated identifier for correlating this invocation with summaries and logs."
+          "description": "Caller-generated identifier for correlating this job with report cards, logs, and external systems."
         }
       },
       "extension_policy": "Additional STANDARD fields may be added in future versions. Programs must ignore unknown keys."
@@ -45,6 +47,7 @@
       "extension_policy": "Run Card infrastructure must not interpret ARGS contents."
     }
   },
+
   "report-card": {
     "required_top_level_keys": [
       "type",
@@ -59,7 +62,7 @@
       "fields_optional": {
         "complete": {
           "type": "boolean",
-          "description": "True if the program completed its intended task. False if it failed or was aborted."
+          "description": "True if the program completed its intended task. False if it failed, aborted, or only partially completed."
         },
         "status": {
           "type": "string",
@@ -67,7 +70,7 @@
           "recommended-values": {
             "ok": {},
             "generic-error": {},
-            "invalid-invocation": {},
+            "invalid-job-card": {},
             "external-dependency-failure": {},
             "partial-completion": {}
           }
@@ -76,24 +79,24 @@
           "type": "integer",
           "description": "Process exit code, if available.",
           "recommended-values": {
-            "success (0)": "0",
-            "generic-error (1)": "1",
-            "invalid-invocation (2)": "2",
-            "external-dependency-failure (3)": "3",
-            "partial-completion (4)": "4"
+            "success (0)": 0,
+            "generic-error (1)": 1,
+            "invalid-job-card (2)": 2,
+            "external-dependency-failure (3)": 3,
+            "partial-completion (4)": 4
           }
         },
-        "timestamp-utc": {
+        "timestamp": {
           "type": "string",
-          "description": "UTC timestamp when the report card was written. May include decimal fractions."
+          "description": "Timestamp when the report card was written, expressed as seconds since Unix epoch with optional decimal fractions."
         },
-        "request-id": {
+        "job-id": {
           "type": "string",
-          "description": "Echo of the request_id from the invocation envelope, if provided."
+          "description": "Echo of the job-id from the job card, if provided."
         },
-        "invocation": {
+        "job-card": {
           "type": "object",
-          "description": "Optional full copy of the invocation JSON envelope that initiated this execution."
+          "description": "Optional full copy of the job card that initiated this execution."
         },
         "events": {
           "type": "array",
@@ -108,15 +111,15 @@
           "items": {
             "type": "object",
             "required_keys": [
-              "timestamp_utc",
+              "timestamp",
               "level",
               "kind",
               "msg"
             ],
             "fields": {
-              "timestamp_utc": {
+              "timestamp": {
                 "type": "string",
-                "description": "UTC timestamp when this event occurred. May include decimal fractions."
+                "description": "Timestamp when this event occurred, expressed as seconds since Unix epoch with optional decimal fractions."
               },
               "level": {
                 "type": "string",
@@ -153,17 +156,23 @@
       "extension_policy": "Run Card infrastructure must not interpret CUSTOM contents."
     }
   },
+
   "behavioral_contract": {
-    "invocation": [
-      "Caller must write a JSON file matching invocation_envelope and provide its path to the program.",
-      "Program must treat invocation_envelope as read-only.",
-      "If STANDARD.report-card-file is provided, program should write its report card to that location."
+    "job-card": [
+      "Caller must write a JSON file matching the Job Card format and provide its path to the program.",
+      "Program must treat the Job Card as read-only.",
+      "If STANDARD.report-card-file is provided, the program must attempt to write its Report Card to that location."
     ],
     "report-card": [
-      "Program should write exactly one report card JSON if possible.",
+      "Program should write exactly one Report Card JSON if possible.",
       "Program may include any or none of the STANDARD optional fields.",
       "Program-specific results must be placed under CUSTOM.",
       "Programs and infrastructure must ignore unknown fields to preserve forward compatibility."
+    ],
+    "lifecycle": [
+      "Programs are encouraged to record job-id into the Report Card when provided.",
+      "Programs should record timestamps at state transitions or at finalization.",
+      "Failure to complete the intended task should be reflected in both status and complete fields when possible."
     ]
   }
 }
