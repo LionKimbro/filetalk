@@ -17,28 +17,28 @@ def _kv(label, value, indent=2):
     return f"{pad}{label:14}: {value}"
 
 
-def format_summary(summary=None):
+def format_reportcard(reportcard=None):
     """
     Returns a deluxe, human-friendly string representation of a
-    FileTalk program invocation summary.
+    Report Card.
     """
 
-    summary = summary or core.g["summary"]
+    reportcard = reportcard or core.g["report-card"]
 
     out = []
 
-    if not summary or not isinstance(summary, dict):
-        return "<< invalid or empty summary >>"
+    if not reportcard or not isinstance(reportcard, dict):
+        return "<< invalid or empty report card >>"
 
     out.append("")
     out.append(LINE)
-    out.append(" FileTalk Process Summary")
+    out.append("Report Card")
     out.append(LINE)
 
-    out.append(_kv("type", summary.get("type", "?")))
+    out.append(_kv("type", reportcard.get("type", "?")))
 
-    std = summary.get("STANDARD", {})
-    cust = summary.get("CUSTOM", {})
+    std = reportcard.get("STANDARD", {})
+    cust = reportcard.get("CUSTOM", {})
 
     # -------------------------
     # STANDARD
@@ -59,11 +59,11 @@ def format_summary(summary=None):
             if k in std:
                 out.append(_kv(k, std[k]))
 
-        if "invocation" in std:
+        if "job-card" in std:
             out.append("")
-            out.append("  invocation:")
-            inv_txt = json.dumps(std["invocation"], indent=2)
-            for line in inv_txt.splitlines():
+            out.append("  job card:")
+            jobcard_txt = json.dumps(std["job-card"], indent=2)
+            for line in jobcard_txt.splitlines():
                 out.append("    " + line)
 
     # -------------------------
@@ -129,8 +129,8 @@ def format_summary(summary=None):
     return "\n".join(out)
 
 
-def print_summary(summary=None):
+def print_reportcard(reportcard=None):
     """
-    Pretty-prints a FileTalk program invocation summary to stdout.
+    Pretty-prints a Report Card to stdout.
     """
-    print(format_summary(summary))
+    print(format_reportcard(reportcard))

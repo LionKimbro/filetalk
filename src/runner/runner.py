@@ -13,6 +13,9 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog
 
+import filetalk_process.core as ftp
+
+
 g = {
     "exec_complete": False,
     "exec_error": None,
@@ -45,18 +48,6 @@ def _request_sync_gui():
     g["sync_scheduled"] = True
     g["ui"]["root"].after_idle(_sync_gui)
 
-def _print_config_stub_and_exit():
-    stub = {
-        "paths": {
-            "execution-log-dir": "<path to execution log records>",
-            "definitions": "<path to definitions JSON file>",
-            "summary-file": "<path to summary file for runner execution>",
-        },
-        "next-execution-number": 0,
-    }
-    sys.stdout.write(json.dumps(stub, indent=2) + "\n")
-    raise SystemExit(0)
-
 
 def _safe_write_json(path, obj):
     # best-effort; no printing
@@ -66,22 +57,6 @@ def _safe_write_json(path, obj):
         return True
     except Exception:
         return False
-
-
-def _write_runner_summary():
-    # Only called AFTER config is loaded successfully.
-    complete = g["exec_complete"]
-    error = g["exec_error"]
-    errorcode = g["exec_errorcode"]
-    traceback = g["traceback"]
-    try:
-        summary_path = g["config"]["paths"]["summary-file"]
-    except Exception:
-        return False
-    payload = {"complete": bool(complete),
-               "error": error, "errorcode": errorcode,
-               "traceback": traceback}
-    return _safe_write_json(summary_path, payload)
 
 
 def _fail_after_config_load(error, errorcode):
@@ -134,26 +109,6 @@ def _config_paths_ok():
             _fail_after_config_load("definitions path exists but is not a file", "DEFINITIONS-NOT-FILE")
 
     return True
-
-
-def _load_config_or_exit():
-    if len(sys.argv) == 1:
-        _print_config_stub_and_exit()
-
-    if len(sys.argv) != 2:
-        # no printing; config not loaded => no summary
-        raise SystemExit(0)
-
-    config_path = sys.argv[1]
-    try:
-        cfg = _load_json_file(config_path)
-    except Exception:
-        # config not loaded successfully => no summary-file rule yet
-        raise SystemExit(0)
-
-    g["config"] = cfg
-    g["config_path"] = config_path
-
 
 def _load_definitions_or_exit():
     defs_path = g["config"]["paths"]["definitions"]
@@ -1120,15 +1075,27 @@ def _show_executable_help():
     btn.pack(pady=(0, 8))
 
 
-def main():
-    _load_config_or_exit()  # may exit early with stub
-    # only after this point do we touch filesystem or GUI
+args_stub = {
+    "paths": {
+        "execution-log-dir": "<path to execution log dir>",
+        "definitions": "<path to definitions.json>"
+    },
+    "next-execution-number": 0
+}
 
-    # Now config is loaded successfully: runner must write summary on any exit path.
-    
+def main():
+    if not ftp.has_json_arg("j"):
+        ftp.print_stub(args_stub, "Sr")  # require summary file; optional request-id
+        return
+
+    # Start FileTalk process for runner itself
+    ftp.start("cr")  # c=complex events, r=request-id
+
     try:
-        # validate required keys minimally
-        cfg = g["config"]
+        # read configuration from arguments
+        inv = ftp.g["invocation"]
+        cfg = g["config"] = inv["ARGS"]
+        
         if "paths" not in cfg:
             _fail_after_config_load("config missing paths", "CONFIG-MISSING-PATHS")
         paths = cfg["paths"]
@@ -1165,11 +1132,10 @@ def main():
         raise
     except Exception as e:
         # unexpected; still write summary
-        g["exec_error"] = str(e)
-        g["exec_errorcode"] = "UNHANDLED-ERROR"
-        g["traceback"] = traceback.format_exc()
+        ftp.record_exception()
+        ftp.output_summary("cte1")
     finally:
-        _write_runner_summary()
+        ftp.output_summary("cot0")  # (c)omplete, status: (o)k, (t)imestamp, exit code (0)
 
-    raise SystemExit(0)
+    raise SystemExit(ftp.get("exit-code"))
 

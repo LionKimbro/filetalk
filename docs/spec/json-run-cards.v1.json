@@ -1,8 +1,8 @@
 {
   "specification": {
-    "name": "FileTalk Invocation",
+    "name": "JSON Run Cards",
     "version": "v0.1",
-    "title": "FileTalk Process Invocation and Summary Envelopes",
+    "title": "JSON Run Cards: Process Invocation and Summary Envelopes",
     "created": "2026-01-26",
     "authors": [
       "Lion Kimbro",
@@ -10,23 +10,23 @@
     ],
     "scope": "epoch-agnostic",
     "status": "stable",
-    "description": "Defines standard JSON envelopes for invoking FileTalk-compatible programs and for returning standardized execution summaries. Envelopes emphasize recognizability, optional observability, and progressive disclosure of complexity."
+    "description": "Defines standard JSON envelopes for invoking programs (called 'job cards') and for returning standardized execution summaries (called 'report cards')."
   },
-  "invocation_envelope": {
+  "job-card": {
     "required_top_level_keys": [
       "type",
       "STANDARD",
       "ARGS"
     ],
     "type_field": {
-      "required_value": "filetalk-program-invocation"
+      "required_value": "json-job-card"
     },
     "STANDARD": {
-      "description": "Standard invocation metadata understood by FileTalk infrastructure and programs. All fields are optional.",
+      "description": "Standard invocation metadata understood by JSON Run Card infrastructure and programs. All fields are optional.",
       "fields_optional": {
-        "summary-file": {
+        "report-card-file": {
           "type": "string",
-          "description": "Filesystem path where the invoked program should write its execution summary JSON."
+          "description": "Filesystem path where the invoked program should write its report card."
         },
         "timestamp-utc": {
           "type": "string",
@@ -42,17 +42,17 @@
     "ARGS": {
       "description": "Program-specific arguments. Structure is entirely defined by the invoked program.",
       "type": "object",
-      "extension_policy": "FileTalk infrastructure must not interpret ARGS contents."
+      "extension_policy": "Run Card infrastructure must not interpret ARGS contents."
     }
   },
-  "summary_envelope": {
+  "report-card": {
     "required_top_level_keys": [
       "type",
       "STANDARD",
       "CUSTOM"
     ],
     "type_field": {
-      "required_value": "filetalk-program-invocation-summary"
+      "required_value": "json-report-card"
     },
     "STANDARD": {
       "description": "Standard execution metadata and optional observability data. STANDARD must exist, but all contained fields are optional.",
@@ -85,7 +85,7 @@
         },
         "timestamp-utc": {
           "type": "string",
-          "description": "UTC timestamp when the summary was written. May include decimal fractions."
+          "description": "UTC timestamp when the report card was written. May include decimal fractions."
         },
         "request-id": {
           "type": "string",
@@ -150,17 +150,17 @@
     "CUSTOM": {
       "description": "Program-specific result data. Structure is entirely defined by the invoked program.",
       "type": "object",
-      "extension_policy": "FileTalk infrastructure must not interpret CUSTOM contents."
+      "extension_policy": "Run Card infrastructure must not interpret CUSTOM contents."
     }
   },
   "behavioral_contract": {
     "invocation": [
       "Caller must write a JSON file matching invocation_envelope and provide its path to the program.",
       "Program must treat invocation_envelope as read-only.",
-      "If STANDARD.summary_file is provided, program should write its summary to that location."
+      "If STANDARD.report-card-file is provided, program should write its report card to that location."
     ],
-    "summary": [
-      "Program should write exactly one summary JSON if possible.",
+    "report-card": [
+      "Program should write exactly one report card JSON if possible.",
       "Program may include any or none of the STANDARD optional fields.",
       "Program-specific results must be placed under CUSTOM.",
       "Programs and infrastructure must ignore unknown fields to preserve forward compatibility."

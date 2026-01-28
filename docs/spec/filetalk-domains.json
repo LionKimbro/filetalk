@@ -1,0 +1,135 @@
+{
+  "meta": {
+    "document_id": "filetalk.architecture.domains.v1",
+    "title": "FileTalk 2025 Conceptual Domains",
+    "author": "Lion Kimbro & Wing-Cat",
+    "date": "2026-01-27",
+    "purpose": "Describe distinct but compatible domains of convention within the FileTalk ecosystem without imposing hierarchical layering."
+  },
+  "domains": {
+    "communication_worldview": {
+      "name": "FileTalk 2025",
+      "type": "communication_philosophy",
+      "scope": "general",
+      "definition": "A worldview that centers the filesystem and JSON as a natural, human-legible medium through which programs may communicate by writing and reading files in directories.",
+      "core_principles": [
+        "Files are the interface",
+        "JSON is the common language",
+        "No sockets, no message brokers, no daemons required",
+        "Human-legible, inspectable state",
+        "Any language, any platform",
+        "Programs act as peers"
+      ],
+      "core_documents": [
+        {
+          "title": "The FileTalk 2025 Manifesto",
+          "written": "2025-06-02"
+        }
+      ],
+      "required_conventions": [
+        "Messages are written as JSON files",
+        "Programs poll directories to receive messages"
+      ],
+      "not_required": [
+        "Central routers",
+        "Standard message schemas",
+        "OUTBOX/INCOMING folder naming",
+        "Channels or signals",
+        "Patch maps or wiring configuration"
+      ],
+      "typical_patterns": [
+        "Drop folders",
+        "Spool directories",
+        "Status snapshots",
+        "Append-only JSONL logs",
+        "Human-readable state files"
+      ],
+      "goal": "Make software legible, remixable, and interoperable using only ordinary filesystem and JSON skills."
+    },
+    "system_wiring_architecture": {
+      "name": "FileTalk 2025 Epoch 3 Patchboard Paradigm",
+      "type": "system_architecture_pattern",
+      "scope": "bounded_subsystem",
+      "definition": "A modular, dynamically rewired message-routing system built on FileTalk-style file communication, using standardized message files and externalized routing.",
+      "depends_on": [
+        "communication_worldview"
+      ],
+      "adds_conventions": [
+        "OUTBOX and INCOMING directories per module",
+        "Standard message dictionary format",
+        "Channel-based signaling",
+        "Patchboard Router for message dispatch",
+        "External patch maps defining wiring"
+      ],
+      "core_principles": [
+        "Externalized routing",
+        "Signal-based message flow",
+        "Dynamic rewiring of modules",
+        "Replaceable processing units",
+        "Inspectable message traces"
+      ],
+      "core_documents": [
+        {
+          "title": "Patchboard Core Message Specification",
+          "written": "2026-01-12"
+        },
+        {
+          "title": "Patchboard File Transport Profile",
+          "written": "2026-01-13"
+        }
+      ],
+      "required_components": [
+        "Patchboard Router",
+        "Patch configuration (patch map)",
+        "Modules that follow OUTBOX/INCOMING conventions"
+      ],
+      "goal": "Enable modular, synth-like construction of persistent systems using file-based message routing."
+    },
+    "run_cards_and_process_observability": {
+      "name": "JSON Run Cards (Job Cards and Report Cards)",
+      "type": "execution_interface_convention",
+      "scope": "program_lifecycle_interface",
+      "definition": "A convention for representing program runs using paired JSON artifacts: a Job Card that describes what work to perform, and a Report Card that summarizes what occurred during the run.",
+      "independent_of": [
+        "system_wiring_architecture"
+      ],
+      "compatible_with": [
+        "communication_worldview",
+        "system_wiring_architecture"
+      ],
+      "core_documents": [
+        {
+          "title": "JSON Run Cards: Job and Report Formats",
+          "written": "2026-01-26"
+        }
+      ],
+      "governs": [
+        "How a program receives structured run instructions (Job Cards)",
+        "How a program reports structured run outcomes (Report Cards)",
+        "How tools and operators may observe and summarize execution"
+      ],
+      "does_not_govern": [
+        "Inter-program messaging",
+        "System routing topology",
+        "Module discovery",
+        "Long-running process coordination"
+      ],
+      "goals": [
+        "Enable uniform program execution, monitoring, and tooling integration through concrete, human-recognizable run artifacts, without imposing architectural structure.",
+        "Eliminate the need for argument parsing."
+      ]
+    }
+  },
+  "relationships": {
+    "patchboard_assumes_filetalk_worldview": true,
+    "run_cards_require_filetalk_worldview": false,
+    "run_cards_are_compatible_with_filetalk_worldview": true,
+    "run_cards_require_patchboard": false,
+    "summary": [
+      "FileTalk promotes the practice of programs communicating through JSON files on the filesystem.",
+      "Patchboard specifies a structured way of wiring programs into message-routing networks using file-based transport.",
+      "JSON Run Cards provide a concrete job-and-report interface for launching programs and observing runs.",
+      "All domains are compatible, and none are required in order to participate in the FileTalk worldview."
+    ]
+  }
+}

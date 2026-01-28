@@ -1,11 +1,13 @@
 {
   "created": "2026-01-12",
+  "document": {
+    "document_id": "filetalk.project.documentation.parallel-specification-policy.v1"
+  },
   "specification_structure": {
     "parallel_specs": {
       "title": "Parallel Specification Artifacts",
-      "description": "FileTalk specifications are maintained in two parallel forms: a machine-readable JSON specification and a human-readable Markdown specification. These documents describe the same versioned specification from complementary perspectives and are intended to coexist permanently."
+      "description": "FileTalk project specifications are maintained in two parallel forms: a machine-readable JSON specification and a human-readable Markdown specification. These documents describe the same versioned specification from complementary perspectives and are intended to coexist permanently."
     },
-
     "json_spec": {
       "role": "machine_truth",
       "purpose": [
@@ -25,7 +27,6 @@
         "Must change conservatively and infrequently"
       ]
     },
-
     "markdown_spec": {
       "role": "human_truth",
       "purpose": [
@@ -43,7 +44,6 @@
         "Must defer to JSON for all normative definitions"
       ]
     },
-
     "governing_principles": {
       "principle_1": {
         "name": "Separation of Contract and Explanation",

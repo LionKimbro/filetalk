@@ -1,8 +1,9 @@
 {
   "specification": {
-    "name": "FileTalk Core",
+    "document_id": "patchboard.spec.messages.core.v1",
+    "name": "Patchboard Core",
     "version": "v1",
-    "title": "FileTalk Core Message Specification",
+    "title": "Patchboard Core Message Specification",
     "created": "2026-01-12",
     "authors": [
       "Lion Kimbro",

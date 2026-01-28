@@ -1,19 +1,27 @@
 {
   "doc": {
     "meta": {
+      "document_id": "filetalk.manifesto.2025.v1",
       "title": "FileTalk Program Invocation Model",
-      "domain": ["FileTalk", "Invocation", "JSON Spec", "CLI", "GUI", "Execution Outputs"],
+      "domain": [
+        "FileTalk",
+        "Invocation",
+        "JSON Spec",
+        "CLI",
+        "GUI",
+        "Execution Outputs"
+      ],
       "status": "informational",
-      "related": ["FileTalk2025 Manifesto"]
+      "related": [
+        "FileTalk2025 Manifesto"
+      ]
     },
-
     "core_concept": {
       "program_role": "persistent machine that accepts structured requests",
       "invocation_unit": "JSON specification",
       "execution_model": "submit request, produce outputs, publish summary",
       "interface_role": "kicker that constructs and submits requests"
     },
-
     "specification": {
       "format": "JSON",
       "purpose": "complete description of requested operation",
@@ -39,7 +47,6 @@
         "other programs"
       ]
     },
-
     "kickers": {
       "definition": "tools that build JSON execution specifications",
       "types": {
@@ -84,7 +91,6 @@
         "program semantics must not depend on kicker type"
       ]
     },
-
     "self_description": {
       "capability": "program can emit schema of accepted request",
       "contents": [
@@ -106,7 +112,6 @@
         "explicit schema request mode"
       ]
     },
-
     "invocation_transport": {
       "direct_execution": {
         "method": "spawn process with JSON input",
@@ -126,7 +131,6 @@
         ]
       }
     },
-
     "outputs": {
       "genuine_output": {
         "role": "domain work product",
@@ -167,7 +171,6 @@
         "outputs must not be embedded in summary except as references"
       ]
     },
-
     "system_ecology": {
       "program_character": [
         "long-lived",
@@ -185,7 +188,6 @@
         "route requests through control panels"
       ]
     },
-
     "design_goals": {
       "human_scale": [
         "readable files",

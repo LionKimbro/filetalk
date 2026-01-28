@@ -15,7 +15,7 @@ authors = [
 dependencies = []
 
 [project.scripts]
-filetalk-runner = "filetalk_runner:main"
+runner = "runner:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
