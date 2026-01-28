@@ -1,101 +1,155 @@
 
 # FileTalk
 
-**FileTalk** is a philosophy and architectural approach for building software systems whose components communicate by **writing and reading files**.
+**FileTalk** is a worldview and design philosophy for building software systems whose components communicate by **writing and reading files**.
 
-At its core:
+At its heart:
 
 * **Files are the interface**
 * **JSON is the medium**
-* **The filesystem is the bus**
+* **The filesystem is the meeting ground**
 
-This approach is intentionally slower than in-process communication between tightly coupled components. That trade-off is deliberate. By operating at the level of files, FileTalk systems gain legibility, decoupling, crash resilience, and language independence — qualities that are difficult to achieve in faster, more opaque architectures.
+FileTalk favors legibility, decoupling, and durability over speed and hidden infrastructure.
+By operating at the level of files, systems become:
 
-FileTalk favors inspectability and composability over abstraction-heavy frameworks or hidden infrastructure. It is deliberately low-tech, portable across languages and platforms, and designed to support systems that can be understood, repaired, and evolved over long periods of time.
+* inspectable by humans,
+* resilient to crashes and restarts,
+* portable across languages and platforms,
+* and friendly to experimentation and repair.
 
-This repository contains both **the core FileTalk paradigm** and **a concrete system built on top of it**.
+FileTalk is not a framework.
+It is a way of thinking about systems.
+
+This repository contains the **FileTalk worldview** and two concrete projects that grow naturally from it:
+
+* 🪪 **JSON Run Cards** — how programs are launched and how runs are observed
+* 🔌 **Patchboard** — how programs are wired into live, reconfigurable systems
 
 ---
 
-## Recommended Reading Order
+## 🌿 Start Here: The Manifesto
 
-If you are new to FileTalk, read the following **in order**:
-
-### 1. 📜 FileTalk (The Manifesto)
+### 📜 FileTalk (The Manifesto)
 
 **What it is:**
-The foundational philosophy and design principles of FileTalk.
+The foundational statement of FileTalk’s philosophy and goals.
 
-* Defines *what FileTalk is*
+* Defines *what FileTalk is and is not*
 * Epoch-agnostic
 * Timeless by intent
 
-📄 **Start here.**
-This document explains *why* FileTalk exists and what problem it addresses.
+📄 **Read this first.**
+Everything else in this repository flows from the ideas in [the Manifesto.](docs/manifesto/2025-06-04_filetalk-manifesto.md)
 
 ---
 
-### 2. 🔌 FileTalk Patchboard (Architecture)
+## 🧭 Two Projects Under the FileTalk Umbrella
+
+FileTalk itself is a worldview, not a protocol suite.
+However, certain recurring needs arise naturally in FileTalk-style systems.
+This repository develops two complementary projects to address those needs.
+
+---
+
+### 🪪 JSON Run Cards (Execution & Observability)
 
 **What it is:**
-A concrete, modular system built *on top of* the FileTalk paradigm.
+A concrete convention for representing program runs using paired JSON artifacts:
 
-* Introduces dynamic routing
-* Externalizes connections between programs
-* Enables live rewiring of systems
+* **Job Cards** — describe what work to perform
+* **Report Cards** — summarize what happened during the run
 
-📄 This document describes the **current active architecture** and should be read *after* the Manifesto.
+Run Cards provide a simple, tool-friendly interface between:
 
-> ⚠️ **Note:**
-> FileTalk Patchboard is one *application* of FileTalk — not the definition of FileTalk itself.
-> Other FileTalk architectures may exist or emerge in the future.
+* runners,
+* schedulers,
+* dashboards,
+* and the programs being executed.
+
+They intentionally:
+
+* eliminate ad-hoc command-line argument parsing,
+* replace shell incantations with structured data,
+* and make runs replayable, inspectable, and automatable.
+
+Run Cards say:
+
+> “Here is the work.”
+> “Here is the report.”
+
+They are compatible with FileTalk systems, but not dependent on any particular system architecture.
 
 ---
 
-## Conceptual Structure
+### 🔌 Patchboard (System Wiring & Message Routing)
 
-The project distinguishes **five related but separate concepts**:
+**What it is:**
+A modular architecture for building live systems out of many small programs.
+
+Patchboard introduces:
+
+* inbox / outbox conventions,
+* standardized message files,
+* external routing via a Patchboard Router,
+* and dynamic rewiring of program connections.
+
+Programs emit messages without knowing where they will go.
+Connections are defined outside the programs themselves.
+
+Patchboard is inspired by:
+
+* modular synthesizers,
+* signal routing boards,
+* and classic Unix composability — extended into network-like graphs.
+
+> ⚠️ **Important:**
+> Patchboard is one *architectural application* of FileTalk, not the definition of FileTalk itself.
+> Other FileTalk architectures are possible and welcome.
+
+---
+
+## 🧠 Conceptual Map
+
+The project distinguishes several related but separate concepts:
 
 ### 1️⃣ FileTalk
 
-The **paradigm**.
+The **worldview**.
 
-* A philosophy of file-based, plainspoken program communication
+* Philosophy of plainspoken, file-based program cooperation
 * Defined by the Manifesto
-* Independent of any specific routing or topology
+* No required topology or infrastructure
 
 ---
 
-### 2️⃣ FileTalk Patchboard
+### 2️⃣ JSON Run Cards
 
-The **system / architecture**.
+The **execution interface**.
 
-* A modular, dynamically routed FileTalk system
-* Inspired by modular synthesizers (patch cords, signal flow)
-* Programs emit messages without knowing their destinations
+* Job Cards and Report Cards
+* Used by runners, schedulers, and dashboards
+* About starting programs and observing runs
+
+Not about inter-program messaging.
 
 ---
 
-### 3️⃣ Patchboard Router
+### 3️⃣ Patchboard
+
+The **system architecture**.
+
+* Programs connected into routed message networks
+* Externalized wiring and live reconfiguration
+
+---
+
+### 4️⃣ Patchboard Router
 
 The **routing fabric**.
 
-* A central process that watches module outboxes
-* Routes messages to inboxes based on external configuration
-* Enables live rewiring without restarting modules
-
----
-
-### 4️⃣ Patchboard Interface
-
-The **contract**.
-
-* Inbox / outbox conventions
-* Message file format
-* Polling and lifecycle rules
-* Expectations that modules follow to participate in Patchboard systems
-
-This defines *how* Patchboard Modules speak.
+* Watches module outboxes
+* Copies messages into inboxes based on patch maps
+* Enables rewiring without restarting modules
 
 ---
 
@@ -104,82 +158,95 @@ This defines *how* Patchboard Modules speak.
 The **participants**.
 
 * Small, independent programs
-* Read messages from an inbox
-* Emit messages to an outbox
-* Can be written in any language capable of file I/O
+* Read from inbox, write to outbox
+* Any language capable of file I/O
 
 Modules may be:
 
-* Patchboard-compatible
-* Standalone FileTalk programs
-* Adapted in or out of Patchboard systems
+* native Patchboard participants,
+* standalone FileTalk-style tools,
+* or adapted via small translation processes.
 
-
-### Participation Without Native Modules
-
-Programs do not need to be written as Patchboard Modules to participate in a FileTalk Patchboard system.
-
-Any program that can be coaxed into emitting data as files — logs, status dumps, snapshots, exports, or reports — can be connected to a Patchboard system via small adapter processes. These adapters translate existing file output into messages that conform to the Patchboard Interface, and may also relay Patchboard messages outward into formats expected by external tools.
-
-This allows FileTalk Patchboard systems to incorporate legacy software, command-line tools, batch jobs, and experimental scripts without requiring them to be rewritten or made Patchboard-aware.
-
-Patchboard Modules represent a *native* participation model, not an exclusive one.
 ---
 
-## Status (2026-01-03)
+## 🤝 Participation Without Native Modules
 
-* **FileTalk (Manifesto):** stable and canonical
-* **FileTalk Patchboard:** active and evolving
+Programs do not need to be written as Patchboard Modules to participate in Patchboard systems.
+
+Any program that can emit files — logs, exports, snapshots, reports — can be connected via small adapters that translate file output into Patchboard messages, and vice versa.
+
+This allows systems to incorporate:
+
+* legacy tools,
+* command-line utilities,
+* batch jobs,
+* experimental scripts,
+
+without rewriting them or making them Patchboard-aware.
+
+Patchboard Modules are a **native participation style**, not a requirement.
+
+---
+
+## 📌 Status (2026-01-27)
+
+* **FileTalk Manifesto:** stable and canonical
+* **JSON Run Cards:** active, early but stabilizing
+* **Patchboard Architecture:** active and evolving
 * **Patchboard Router:** currently primitive and experimental
-* **Modules:** early examples and prototypes
+* **Modules & Examples:** early prototypes
 
 This repository prioritizes **clarity and direction** over completeness.
 Some components are intentionally simple or provisional.
 
 ---
 
-## Philosophy
+## 🌱 Philosophy
 
 FileTalk systems aim to be:
 
-* Inspectable by humans
-* Composable without central frameworks
-* Resilient to crashes and restarts
-* Honest about their state
-* Built from small, replaceable parts
+* inspectable by humans,
+* composable without heavy frameworks,
+* resilient to crashes and restarts,
+* honest about their state,
+* built from small, replaceable parts.
 
-FileTalk is not a framework.
-It is a way of thinking about systems.
-
----
-
-## What’s Coming
-
-(2026-01-03:) In the coming weeks, this repository will grow to include:
-
-* A reference Patchboard Router
-* Example Patchboard Modules
-* Small, composable utilities
-* Practical demonstrations of FileTalk Patchboard systems
-
-Each addition will follow the principles laid out in the Manifesto.
+FileTalk is not about performance first.
+It is about **understandability over time**.
 
 ---
 
-## Closing
+## 🔮 What’s Coming
 
-If you are curious about building systems that feel more like **villages of programs** than monoliths or services, FileTalk may resonate with you.
+In the near future, this repository will grow to include:
+
+* reference runners for JSON Run Cards
+* a more capable Patchboard Router
+* example Patchboard Modules
+* small, composable utilities
+* complete demonstration systems
+
+All additions will follow the spirit of the Manifesto:
+plain, inspectable, and remixable.
+
+---
+
+## 🌄 Closing
+
+If you are curious about building systems that feel more like
+**villages of programs** than monoliths or services,
+FileTalk may resonate with you.
 
 Begin with the Manifesto.
-Everything else follows from there.
+Everything else grows from there.
 
 🐾
 
+---
 
 ## Author
 
 FileTalk is authored and maintained by **Lion Kimbro**.
 
-You can follow ongoing thoughts, experiments, and updates on X:  
-👉 https://x.com/LionKimbro
-
+You can follow ongoing thoughts, experiments, and updates on X:
+👉 [https://x.com/LionKimbro](https://x.com/LionKimbro)
