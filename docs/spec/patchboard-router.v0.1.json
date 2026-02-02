@@ -1,0 +1,225 @@
+{
+  "document": {
+    "title": "Patchboard Router All-Aspects Design Document",
+    "documentid": "spec.filetalk-patchboard-router",
+    "version": "0.1",
+    "created": "2026-02-02",
+    "epoch": "filetalk_2025_epoch_5"
+  },
+  "descriptors": {
+    "package": "patchboard_router",
+    "pypi-project": "patchboard-router"
+  },
+  "references": {
+    "document-ids-to-collect": [
+      "filetalk core message specification",
+      "filetalk file transport specification",
+      "lionscliapp API documentation"
+    ]
+  },
+  "vision": {
+    "intent": "Headless FileTalk-controlled patchboard router with published state + change notices."
+  },
+  "tech-stack": {
+    "hardware": "a computer built say 2005-2035",
+    "operating-system": "Windows, Mac, or Linux",
+    "interpreter": "Python 3.something+",
+    "execution": "launched as a Python module: python -m patchboard"
+  },
+  "input-output-surface": {
+    "cli": {},
+    "patchboard": {
+      "input": {
+        "connecting": {},
+        "disconnecting": {}
+      },
+      "output": {
+        "change-publication": {}
+      }
+    },
+    "filetalk": {
+      "system-state": {
+        "filepath": "<tbd>",
+        "schema": {
+          "schema_version": "1",
+          "fields": [
+            "router_id",
+            "started_at_utc",
+            "tick",
+            "delay_seconds",
+            "routes",
+            "stats",
+            "last_change"
+          ],
+          "routes_entry_shape": {
+            "route_id": "string",
+            "enabled": true,
+            "from": {
+              "outbox_path": "string",
+              "channel": "string_or_*"
+            },
+            "to": {
+              "inbox_path": "string",
+              "channel": "string"
+            },
+            "mode": "copy|move",
+            "notes": "optional string"
+          },
+          "stats_shape": {
+            "seen": 0,
+            "delivered": 0,
+            "deleted": 0,
+            "skipped_unreadable": 0,
+            "skipped_missing_folder": 0,
+            "discarded_unrouted": 0
+          }
+        }
+      },
+      "event-log": {
+        "format": "jsonl",
+        "events": [
+          "startup",
+          "shutdown",
+          "route_added",
+          "route_removed",
+          "route_enabled",
+          "route_disabled",
+          "config_changed",
+          "deliver_success",
+          "deliver_failure"
+        ],
+        "purpose": "for audit/debug + for reconstructing 'what changed' without reading whole state history"
+      },
+      "live-connections": {}
+    }
+  },
+  "internal-structure": {
+    "process_model": {
+      "single_process": true,
+      "single_thread": true,
+      "poll_loop": true
+    }
+  },
+  "filesystem_conventions": {
+    "message_file_extension": ".json",
+    "message_filename": "typically GUID-named",
+    "atomic_write_rule": "writers should write to temp then rename; router will skip unreadable/partial JSON",
+    "safe_state_write_rule": "router writes state to temp + atomic rename"
+  },
+  "app-flow": {},
+  "lionscliapp-config": {
+    "config-keys": {
+      "path.control_inbox": "router/control/inbox",
+      "path.control_outbox": "router/control/outbox",
+      "path.notify_outbox": "router/notify/outbox",
+      "path.state_file": "router/state/router_state.json",
+      "path.event_log": "router/log/router_events.jsonl",
+      "router.delay_seconds": 0.5,
+      "router.max_deliveries_per_tick": 500,
+      "router.discard_unrouted": true,
+      "router.dedupe_window_seconds": 0,
+      "json.rendering.state": "pretty",
+      "json.indent.state": 2
+    }
+  },
+  "WINGCAT: I'M RELOCATING THIS INTO THE REST OF THE DOCUMENT WITH YOU": {
+    "control_protocol": {
+      "DIRECTION TO WING-CAT": "PLEASE HELP ME PUT THIS INTO THE INPUT-OUTPUT-SURFACE, PATCHBOARD COMMUNICATIONS",
+      "transport": "FileTalk JSON files dropped into path.control_inbox",
+      "response": "optional ack/nack dropped into path.control_outbox",
+      "notify": "state-changed notice dropped into path.notify_outbox",
+      "control_message_common_fields": {
+        "msgtype": "router.control",
+        "op": "connect|disconnect|enable|disable|clear|list|set|ping",
+        "request_id": "string (recommended)",
+        "reply_to": "optional outbox path for directed replies",
+        "ts_utc": "optional"
+      },
+      "ops": {
+        "connect": {
+          "adds_route": true,
+          "required_fields": [
+            "from_outbox",
+            "from_channel",
+            "to_inbox",
+            "to_channel"
+          ],
+          "optional_fields": [
+            "route_id",
+            "enabled",
+            "mode",
+            "notes"
+          ],
+          "route_id_rule": "if missing, router generates stable id"
+        },
+        "disconnect": {
+          "removes_route": true,
+          "match": "by route_id preferred; else by 4-tuple from/to"
+        },
+        "enable": {
+          "sets_enabled": true,
+          "match": "route_id"
+        },
+        "disable": {
+          "sets_enabled": false,
+          "match": "route_id"
+        },
+        "clear": {
+          "removes_all_routes": true
+        },
+        "list": {
+          "returns_state_subset": [
+            "routes"
+          ]
+        },
+        "set": {
+          "mutates_runtime_config": true,
+          "allowed_keys": [
+            "router.delay_seconds",
+            "router.max_deliveries_per_tick",
+            "router.discard_unrouted"
+          ]
+        },
+        "ping": {
+          "returns": "pong + state summary"
+        }
+      },
+      "notify_message": {
+        "msgtype": "router.notice",
+        "event": "state_changed",
+        "reason": "connect|disconnect|enable|disable|clear|set|startup|shutdown",
+        "router_state_path": "path.state_file",
+        "tick": "int",
+        "ts_utc": "optional"
+      },
+      "ack_message": {
+        "msgtype": "router.ack",
+        "request_id": "echo",
+        "ok": true,
+        "error": "string if ok=false",
+        "result": "optional payload (e.g., route_id, routes list)"
+      }
+    },
+    "routing_semantics": {
+      "match_rule": "message.channel must equal route.from.channel, unless route.from.channel == '*'",
+      "delivery_rule": "for each source message, deliver to ALL matching enabled routes (fanout)",
+      "channel_rewrite": "delivered_message.channel becomes route.to.channel",
+      "delete_rule": "delete source only after all required deliveries succeed for that message",
+      "discard_unrouted_rule": "if no routes match and router.discard_unrouted=true, delete source after read; else leave it",
+      "error_handling": [
+        "if source JSON unreadable (likely still writing), skip this tick",
+        "if inbox missing, count skipped_missing_folder and do not delete source",
+        "if delivery write fails, do not delete source"
+      ]
+    }
+  },
+  "implementation_plan": {
+    "steps": {
+      "10 - Design Simple Specification": {},
+      "20 - Implement in Claude Code": {}
+    }
+  },
+  "progress": {
+    "step": "10 - Design Simple Specification"
+  }
+}
