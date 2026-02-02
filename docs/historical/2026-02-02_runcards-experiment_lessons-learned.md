@@ -1,7 +1,7 @@
 # Run-Cards Experiment — Lessons Learned  
 **Date:** 2026-02-02  
-**Written by:** Wing-Cat  
-**With direction by:** Lion Kimbro  
+**Written by:** Wing-Cat
+**With direction, correction, and editing by:** Lion Kimbro  
 **Location:** `filetalk/doc/historical/2026-02-02_runcards-experiment_lessons-learned.md`
 
 ---
@@ -11,11 +11,10 @@
 This document records the motivation, evolution, and retirement of the
 **Run-Cards** and **Runner** experiment inside the FileTalk ecosystem.
 
-It is written by Wing-Cat, with direct guidance and correction from Lion Kimbro,
+It is written by Wing-Cat, with direct guidance, correction, and editing from Lion Kimbro,
 who originated the problem, built the systems, and ultimately chose their removal.
 
-The purpose of this document is not to justify the experiment, nor to disown it,
-but to preserve the *thinking* that occurred so it does not have to be re-done.
+The purpose of this document is to track lessons learned from the experiment.
 
 ---
 
@@ -66,11 +65,18 @@ problem.
 
 ---
 
+## Scope Creep
+
+> **Lion:** At this point, I thought: “Well, as long as we’re formalizing arguments, we should also formalize the return value. And why return just an error code, when we could also return the errors and warnings that arose? And since this is FileTalk, there should be a place where the completed execution is returned as a summary.”
+>
+> This is where the system began to expand beyond its original scope.
+
+
 ## The Invocation Question
 
 The experiment began to strain when a new question arose:
 
-> “Configuration of *what*, exactly?”
+> “How do you run it?”
 
 The JSON file described everything *except* how the program itself should be run.
 
@@ -137,6 +143,8 @@ Not:
 - orchestration layers
 
 This reframing marked the decisive turn.
+
+> **Lion:** This is completely accurate. This is exactly what happened.
 
 ---
 
@@ -206,8 +214,13 @@ It was consolidation.
    Making every program easier to write mattered more than abstracting
    over all programs.
 
+> **Lion:** I partly agree with this. We did, in fact, end up creating a broadly applicable solution — or at least a large general improvement — in the form of **lionscliapp**, which generalizes CLI argument specification, program help, and persistence of configuration data.
+
+
 6. **Some ideas are right, but too heavy for their moment**
    Run-Cards were not dumb — they were simply more than the problem required.
+
+> **Lion:** That said, parts of Run-Cards were genuinely dumb.
 
 ---
 
@@ -234,6 +247,9 @@ Any future attempt should avoid:
 
 The insight remains open, but better bounded.
 
+> **Lion:** I continue to think on this.
+
+
 ---
 
 ## References
@@ -241,11 +257,6 @@ The insight remains open, but better bounded.
 - FileTalk codebase state **before removal of Run-Cards and Runner**  
   Git tag: `boundary/runcards/final`
 
----
+- Source conversation with Wing-Cat:
+  https://chatgpt.com/c/6980f5eb-50a0-832a-bfb2-2476bc147ddd
 
-## Closing
-
-This document exists so the thinking survives deletion.
-
-The experiment clarified the problem.
-The deletion preserves the clarity.
