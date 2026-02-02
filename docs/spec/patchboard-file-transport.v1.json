@@ -1,6 +1,7 @@
 {
   "specification": {
     "name": "FileTalk File Transport Profile",
+    "documentid": "patchboard.spec.messages.file-transport.v1",
     "version": "v1",
     "title": "FileTalk File Transport Profile",
     "created": "2026-01-13",

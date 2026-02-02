@@ -71,10 +71,12 @@
       "core_documents": [
         {
           "title": "Patchboard Core Message Specification",
+          "documentid": "patchboard.spec.messages.core.v1",
           "written": "2026-01-12"
         },
         {
           "title": "Patchboard File Transport Profile",
+          "documentid": "patchboard.spec.messages.file-transport.v1",
           "written": "2026-01-13"
         }
       ],

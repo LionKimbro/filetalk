@@ -11,10 +11,10 @@
     "pypi-project": "patchboard-router"
   },
   "references": {
-    "document-ids-to-collect": [
-      "filetalk core message specification",
-      "filetalk file transport specification",
-      "lionscliapp API documentation"
+    "document-ids": [
+      "patchboard.spec.messages.core.v1",
+      "patchboard.spec.messages.file-transport.v1",
+      "lionscliapp.api.v1"
     ]
   },
   "vision": {
@@ -25,6 +25,38 @@
     "operating-system": "Windows, Mac, or Linux",
     "interpreter": "Python 3.something+",
     "execution": "launched as a Python module: python -m patchboard"
+  },
+  "path-canonicalization": {
+    "scope": "Global",
+    "purpose": "Define a single, stable, canonical representation for filesystem paths used anywhere in the Patchboard Router system.",
+    "applicability": [
+      "Input validation (link / unlink)",
+      "Route identity and equality",
+      "Event recording and replay",
+      "Internal routing indices",
+      "Published routes and state artifacts"
+    ],
+    "rules": [
+      "All filesystem paths accepted by the router MUST be canonicalized before use.",
+      "All internal comparisons involving filesystem paths MUST use canonicalized forms.",
+      "All persisted or published paths MUST use the canonical representation."
+    ],
+    "canonical-form": [
+      "Paths are absolute.",
+      "Paths are resolved to eliminate '.', '..', and equivalent components.",
+      "Paths are normalized according to the host operating system’s path semantics."
+    ],
+    "symbolic-links": {
+      "policy": "Implementation-defined but consistent.",
+      "rule": "Symbolic links MAY be preserved or resolved, but the choice MUST be applied uniformly across all paths, including across restarts and event replay."
+    },
+    "consumer-contract": [
+      "Published paths are authoritative and MUST be treated as opaque strings.",
+      "Consumers MUST NOT attempt to re-normalize or reinterpret paths."
+    ],
+    "implementation-note": [
+      "Canonicalization SHOULD use standard library facilities (e.g., Python pathlib or os.path)."
+    ]
   },
   "input-output-surface": {
     "cli": {
@@ -41,105 +73,155 @@
         }
       },
       "policy": {
-        "exclude": {
-          "principle": {
-            "exclude what changes": "exclude what WILL change during the life of the run",
-            "mutation will occur via Patchboard control messages": "they will come through the INBOX of the patchboard router",
-            "persistence": "will be taken care of by the router application itself"
-          },
-          "specifics": {
-            "routing-tables": "these are changed frequently during the execution of the program",
-            "polling-frequency": "this should be adjustable for the entire execution of the program, perhaps even individuated for specific routes"
-          }
-        },
-        "include": {
-          "principle": "include what will NOT change during the life of the program",
-          "specifics": {
-            "filesystem-roots": {},
-            "log-locations": {},
-            "identity/packaging": {}
-          }
-        }
+        "principle": "lionscliapp configuration is not a runtime control surface",
+        "statement": [
+          "The CLI layer is limited to execution-time invariants and message emission.",
+          "All runtime mutation is mediated by the Patchboard Router via FileTalk inputs."
+        ],
+        "non-goals": [
+          "Live operational tuning",
+          "Direct routing-table mutation",
+          "Runtime behavior adjustment"
+        ]
       },
       "commands": {
         "run": {
-          "description": "Launch the Patchboard Router main loop. This process has authoritative access to all router state, routing tables, event logs, and FileTalk I/O.",
+          "role": "authoritative-process",
+          "description": "Launch the Patchboard Router main loop.",
           "behavior": [
-            "Initializes filesystem paths",
-            "Publishes initial system state",
-            "Emits lifecycle startup notice",
-            "Begins polling loop for control messages and routed traffic"
+            "described in app-flow"
           ],
-          "authority": "read-write",
           "notes": [
-            "Exactly one 'run' process may be active per router instance",
-            "All state mutation occurs exclusively within this process"
+            "Exactly one run process may be active per execution root",
+            "All other CLI commands assume a run process already exists"
           ]
         },
         "status": {
-          "description": "Display the current externally-published router state.",
+          "role": "read-only",
+          "description": "Display the current derived router state.",
           "behavior": [
-            "Reads the router state JSON file",
-            "Renders summary information to stdout"
+            "Read status.json",
+            "Render contents to stdout"
           ],
-          "authority": "read-only",
-          "data_source": "path.state_file",
-          "notes": [
-            "Does not communicate with the running router process",
-            "Safe to invoke concurrently with 'run'"
-          ]
+          "communication": "none",
+          "failure-mode": "Fails if router has not been started"
         },
         "routes": {
-          "description": "Display the currently configured routing table.",
+          "role": "read-only",
+          "description": "Display the currently effective routing table.",
           "behavior": [
-            "Reads the router state JSON file",
-            "Extracts and renders the 'routes' section"
+            "Read routes.json",
+            "Render route list to stdout"
           ],
-          "authority": "read-only",
-          "data_source": "path.state_file",
-          "notes": [
-            "This command is informational only",
-            "Route changes must be performed via FileTalk control messages"
-          ]
+          "communication": "none",
+          "failure-mode": "Fails if router has not been started"
         },
         "link": {
-          "description": "Request creation of a routing connection by emitting a FileTalk control message to the running router.",
+          "role": "indirect-mutation",
+          "description": "Request creation of a routing connection.",
           "behavior": [
-            "Constructs a FileTalk control message",
-            "Writes the message into the router control inbox"
+            "Construct a Patchboard input message",
+            "Write message to router INBOX"
           ],
-          "authority": "indirect",
-          "mechanism": "filetalk-message",
+          "emitted-message": {
+            "channel": "link",
+            "signal-fields": [
+              "source-folder",
+              "source-channel",
+              "destination-channel",
+              "destination-folder",
+              "ack-path (optional)"
+            ]
+          },
           "notes": [
-            "This command does not modify router state directly",
-            "The running 'run' process may accept or reject the request"
+            "This command does not verify route existence",
+            "Acceptance or rejection is determined by the router",
+            "Acknowledgement is optional via ack-path"
           ]
         },
         "unlink": {
-          "description": "Request removal of a routing connection by emitting a FileTalk control message to the running router.",
+          "role": "indirect-mutation",
+          "description": "Request removal of a routing connection.",
           "behavior": [
-            "Constructs a FileTalk control message",
-            "Writes the message into the router control inbox"
+            "Construct a Patchboard input message",
+            "Write message to router INBOX"
           ],
-          "authority": "indirect",
-          "mechanism": "filetalk-message",
+          "emitted-message": {
+            "channel": "unlink",
+            "signal-fields": [
+              "source-folder",
+              "source-channel",
+              "destination-channel",
+              "destination-folder",
+              "ack-path (optional)"
+            ]
+          },
           "notes": [
-            "Actual state changes are performed only by the 'run' process",
-            "Failure or success is observable via published state or notices"
+            "Routes are matched by full endpoint equality",
+            "No effect if the route does not exist"
+          ]
+        },
+        "quit": {
+          "role": "indirect-lifecycle",
+          "description": "Request a clean router shutdown.",
+          "behavior": [
+            "Emit quit message to router INBOX",
+            "Return immediately"
+          ],
+          "emitted-message": {
+            "channel": "quit",
+            "signal": {}
+          },
+          "semantics": [
+            "Shutdown is graceful and ordered",
+            "Router completes delivery of lifecycle messages",
+            "No Ctrl-C or signal-based termination is required"
+          ],
+          "notes": [
+            "Preferred shutdown mechanism on Windows",
+            "Multiple quit messages are harmless"
           ]
         }
       }
     },
     "patchboard": {
       "input": {
-        "link-cmd": {},
-        "unlink-cmd": {}
+        "link": {
+          "channel": "link",
+          "signal": {
+            "source-folder": "<path>",
+            "source-channel": "<channel>",
+            "destination-channel": "<channel>",
+            "destination-folder": "<path>",
+            "ack-path": "<path, optional>"
+          },
+          "note": "All filesystem paths provided in this message's signal are canonicalized according to path-canonicalization before comparison, storage, or event recording."
+        },
+        "unlink": {
+          "channel": "unlink",
+          "signal": {
+            "source-folder": "<path>",
+            "source-channel": "<channel>",
+            "destination-channel": "<channel>",
+            "destination-folder": "<path>",
+            "ack-path": "<path, optional>"
+          },
+          "note": "Unlink requests are matched against existing routes using canonicalized paths; callers MAY provide non-canonical paths."
+        },
+        "quit": {
+          "channel": "quit",
+          "signal": {}
+        }
       },
       "output": {
         "change-notice": {
-          "message-channel": "router.notice",
-          "event": "state-changed",
-          "detail_level": "minimal",
+          "message": {
+            "channel": "notice",
+            "signal": {},
+            "timestamp": "<timestamp>"
+          },
+          "issue": "Whenever internal state changes, issue a signal-less (empty dictionary) output on the 'notice' channel.",
+          "detail_level": "none",
           "policy": {
             "description": "The router emits a coarse-grained 'something has changed' notice rather than detailed diffs.",
             "rationale": [
@@ -153,7 +235,59 @@
             "Observers are expected to re-read published state upon receipt",
             "This policy is considered a design feature, not a limitation"
           ]
+        },
+        "startup": {
+          "message": {
+            "channel": "startup",
+            "signal": {},
+            "timestamp": "<timestamp>"
+          }
+        },
+        "shutdown": {
+          "message": {
+            "channel": "shutdown",
+            "signal": {},
+            "timestamp": "<timestamp>"
+          }
         }
+      },
+      "acknowledgement-process": {
+        "purpose": "Provide an optional, low-coupling mechanism for callers to receive confirmation that an input command has been handled.",
+        "opt_in": {
+          "mechanism": "ack-path parameter in input signal",
+          "description": "Acknowledgement is performed only if the input signal includes an explicit ack-path."
+        },
+        "behavior": {
+          "trigger": "Successful completion of command handling by the router",
+          "action": "Write an acknowledgement artifact at the provided ack-path",
+          "timing": "After internal state mutation (if any) has completed"
+        },
+        "acknowledgement-artifact": {
+          "location": "Filesystem path provided by caller",
+          "format": "Implementation-defined",
+          "minimum_requirement": "Filesystem write indicating completion",
+          "recommended_contents": {
+            "channel": "filetalk-patchboard-router-acknowledgement",
+            "signal": "<command's input channel name>",
+            "timestamp": "<unix timestamp>"
+          },
+          "notes": [
+            "A zero-length file is sufficient to satisfy acknowledgement semantics",
+            "Structured JSON MAY be written if additional metadata is useful",
+            "This is undecided."
+          ]
+        },
+        "non-goals": [
+          "Delivery guarantees",
+          "Retry semantics",
+          "Error reporting beyond acknowledgement absence",
+          "Centralized acknowledgement channels"
+        ],
+        "design_rationale": [
+          "Keeps acknowledgements out of the primary message channel space",
+          "Avoids introducing mandatory request/response coupling",
+          "Allows callers to choose their own confirmation strategy"
+        ]
       }
     },
     "filetalk": {
@@ -165,25 +299,10 @@
             "router_id",
             "started_at_utc",
             "tick",
+            "last_change",
             "delay_seconds",
-            "routes",
-            "stats",
-            "last_change"
+            "stats"
           ],
-          "routes_entry_shape": {
-            "route_id": "string",
-            "enabled": true,
-            "from": {
-              "outbox_path": "string",
-              "channel": "string_or_*"
-            },
-            "to": {
-              "inbox_path": "string",
-              "channel": "string"
-            },
-            "mode": "copy|move",
-            "notes": "optional string"
-          },
           "stats_shape": {
             "seen": 0,
             "delivered": 0,
@@ -192,7 +311,29 @@
             "skipped_missing_folder": 0,
             "discarded_unrouted": 0
           }
-        }
+        },
+        "policy": "filetalk.system-state and filetalk.routes are published independently; consumers MUST NOT assume they are updated atomically."
+      },
+      "routes": {
+        "filepath": "<tbd>",
+        "schema": {
+          "schema-version": "1",
+          "updated-at-utc": "<timestamp>",
+          "routes": [
+            {
+              "source-folder": "<path>",
+              "source-channel": "<channel>",
+              "destination-channel": "<channel>",
+              "destination-folder": "<path>"
+            }
+          ]
+        },
+        "policy": [
+          "The order of entries in routes is not semantically meaningful.",
+          "filetalk.system-state and filetalk.routes are published independently; consumers MUST NOT assume they are updated atomically.",
+          "Consumers MUST compare folder paths using exact string equality.",
+          "All folder paths are published in canonical form per path-canonicalization."
+        ]
       },
       "event-log": {
         "format": "jsonl",
@@ -217,15 +358,350 @@
       "single_process": true,
       "single_thread": true,
       "poll_loop": true
+    },
+    "routing-table": {
+      "scope": "This section describes the router’s internal, authoritative representation of routes and is not a stability contract for external consumers.",
+      "route-definition": {
+        "description": "A route defines how messages are transferred from a source to a destination.",
+        "fields": {
+          "source-folder": "Filesystem path to an OUTBOX directory",
+          "source-channel": "Channel value of incoming messages to match",
+          "destination-channel": "Channel value to assign to delivered messages",
+          "destination-folder": "Filesystem path to an INBOX directory"
+        },
+        "identity": {
+          "rule": "Two routes are considered identical if and only if all four fields are equal.",
+          "notes": [
+            "Folder identity is determined by the resolved filesystem path",
+            "Folder identity is determined by exact string equality after canonicalization per path-canonicalization.",
+            "Channel identity is determined by exact string equality"
+          ]
+        }
+      },
+      "table-structure": {
+        "authoritative-representation": "A list of routes",
+        "semantics": [
+          "Order of routes is not semantically meaningful",
+          "Duplicate routes are not permitted"
+        ]
+      },
+      "fan-out": {
+        "definition": "Fan-out occurs when multiple routes share the same source-folder and source-channel.",
+        "notes": [
+          "Fan-out is an emergent property of the routing table",
+          "No special fan-out construct is defined"
+        ]
+      },
+      "derived-indices": {
+        "status": "non-authoritative",
+        "purpose": "Support efficient routing during message processing",
+        "properties": [
+          "Derived from the authoritative routing table",
+          "Rebuilt when routes are added or removed",
+          "Not persisted as primary state"
+        ],
+        "efficiency-goal": [
+          "Each source folder is visited once per routing pass",
+          "Each message is read at most once",
+          "Each message may be delivered zero or more times",
+          "Source messages are deleted only after all deliveries complete successfully"
+        ]
+      },
+      "message-handling-assumptions": {
+        "unreadable-messages": {
+          "rule": "Messages that cannot be parsed as valid JSON are skipped.",
+          "interpretation": "Such messages are presumed to be in-progress writes and are retried later.",
+          "zombies": "External tools will take care of deleting zombies."
+        }
+      }
     }
   },
-  "filesystem_conventions": {
-    "message_file_extension": ".json",
-    "message_filename": "typically GUID-named",
-    "atomic_write_rule": "writers should write to temp then rename; router will skip unreadable/partial JSON",
-    "safe_state_write_rule": "router writes state to temp + atomic rename"
+  "filesystem-layout": {
+    "root": {
+      "description": "All Patchboard Router files are stored under a project directory created beneath the execution root provided by lionscliapp.",
+      "project-directory": ".patchboard-router",
+      "constraints": [
+        "The project directory name is fixed and MUST NOT be changed.",
+        "The user MAY select a different execution root via lionscliapp.",
+        "No internal logic or external consumer MUST rely on the literal project directory name."
+      ]
+    },
+    "contents": {
+      "events-log": {
+        "path": "events.jsonl",
+        "format": "JSON Lines",
+        "role": "Authoritative event log",
+        "authority": [
+          "This file is the authoritative source of logged router state.",
+          "Route establishment, route removal, and lifecycle transitions are recorded here.",
+          "On startup, router state is reconstructed by replaying this log."
+        ],
+        "notes": [
+          "The log is append-only.",
+          "Event ordering is significant.",
+          "Log compaction or truncation is out of scope for v0.1."
+        ]
+      },
+      "system-state": {
+        "path": "status.json",
+        "role": "Derived state projection",
+        "authority": [
+          "This file is a projection derived from the event log and runtime session data.",
+          "It is not an authoritative source of truth."
+        ],
+        "contents": [
+          "Router identity and lifecycle metadata",
+          "Session statistics (e.g. message counts)",
+          "Coarse timing and tick information"
+        ],
+        "update-policy": "Overwritten atomically as a convenience snapshot."
+      },
+      "routes": {
+        "path": "routes.json",
+        "role": "Derived routing table projection",
+        "authority": [
+          "This file is a projection derived from replaying route-related events.",
+          "It represents the current effective routing table."
+        ],
+        "update-policy": "Overwritten atomically whenever the routing table changes."
+      },
+      "inbox": {
+        "path": "INBOX/",
+        "role": "Router input directory",
+        "notes": [
+          "All Patchboard messages addressed to the router are received here.",
+          "Message differentiation is performed exclusively by channel."
+        ]
+      },
+      "outbox": {
+        "path": "OUTBOX/",
+        "role": "Router output directory",
+        "notes": [
+          "Lifecycle messages (startup, shutdown) are written here.",
+          "Change-notice messages are written here."
+        ]
+      }
+    },
+    "invariants": [
+      "The event log MUST be replayed before processing new messages.",
+      "INBOX and OUTBOX directories MUST exist before message processing begins.",
+      "Derived files MAY be deleted and MUST be reconstructible from the event log.",
+      "All published files MUST be written using a safe write strategy (temporary file + atomic rename)."
+    ]
   },
-  "app-flow": {},
+  "events-log": {
+    "purpose": "Provide an append-only historical record of router lifecycle and topology changes for diagnostics, auditing, and state reconstruction.",
+    "authoritativeness": {
+      "delivery": "Events do NOT represent message delivery or delivery correctness.",
+      "state": "The event log is authoritative for routing table history and reconstruction; published router state is a derived, materialized view."
+    },
+    "storage": {
+      "format": "jsonl",
+      "append_only": true,
+      "ordering": "Events are written in the order they occur."
+    },
+    "common-fields": {
+      "event": "<string>",
+      "ts_utc": "<unix timestamp>"
+    },
+    "events": {
+      "startup": {
+        "description": "Emitted when the router process begins execution.",
+        "fields": [],
+        "notes": [
+          "Recorded for historical and diagnostic purposes only.",
+          "Does not participate in routing semantics."
+        ]
+      },
+      "shutdown": {
+        "description": "Emitted when the router process terminates cleanly.",
+        "fields": [],
+        "notes": [
+          "Absence of a shutdown event before a subsequent startup implies an unclean termination."
+        ]
+      },
+      "route_added": {
+        "description": "Emitted when a new route is added to the routing table.",
+        "fields": {
+          "source-folder": "<absolute normalized path>",
+          "source-channel": "<channel>",
+          "destination-channel": "<channel>",
+          "destination-folder": "<absolute normalized path>",
+          "note": "All path fields recorded in events are stored in canonical form as defined by path-canonicalization."
+        }
+      },
+      "route_removed": {
+        "description": "Emitted when an existing route is removed from the routing table.",
+        "fields": {
+          "source-folder": "<absolute normalized path>",
+          "source-channel": "<channel>",
+          "destination-channel": "<channel>",
+          "destination-folder": "<absolute normalized path>"
+        }
+      }
+    },
+    "non-goals": [
+      "Recording individual message delivery",
+      "Ensuring exactly-once delivery",
+      "Providing transactional guarantees",
+      "Acting as a write-ahead log for routing operations"
+    ],
+    "replay-notes": [
+      "Replaying events in order is sufficient to reconstruct the routing table.",
+      "Session-specific data (ticks, counters, stats) is not reconstructed from events.",
+      "Delivery behavior is intentionally excluded from event replay.",
+      "Canonicalization guarantees that replayed route events reconstruct an identical routing table across process restarts."
+    ]
+  },
+  "app-flow": {
+    "process-entry": {
+      "command": "cli.run",
+      "description": "Entry point for the authoritative Patchboard Router process."
+    },
+    "startup-sequence": [
+      {
+        "step": "initialize-filesystem",
+        "actions": [
+          "Ensure project directory exists",
+          "Ensure INBOX and OUTBOX directories exist",
+          "Ensure events log exists (create if missing)"
+        ]
+      },
+      {
+        "step": "replay-events-log",
+        "description": "Reconstruct authoritative routing table by replaying route-related events in order.",
+        "notes": [
+          "The events log is the sole authority for routing topology",
+          "Session statistics are initialized fresh and not reconstructed"
+        ]
+      },
+      {
+        "step": "emit-startup-message",
+        "description": "Write a startup lifecycle message to the router OUTBOX",
+        "notes": [
+          "Startup is communicated via normal routing mechanisms",
+          "No special delivery path exists for lifecycle messages"
+        ]
+      },
+      {
+        "step": "initial-delivery-pass",
+        "description": "Perform a delivery pass to distribute the startup message",
+        "mode": "normal"
+      },
+      {
+        "step": "publish-initial-state",
+        "description": "Write derived projections (routes.json, status.json)"
+      }
+    ],
+    "main-loop": {
+      "mode": "normal",
+      "loop-condition": "until quit requested",
+      "iteration-steps": [
+        {
+          "phase": "delivery",
+          "description": "Perform one routing pass using the la-la routing policy",
+          "mode": "normal",
+          "actions": [
+            "Scan all source outbox folders referenced by the routing table",
+            "Compute planned copy and delete operations",
+            "Perform all copy operations",
+            "Perform all delete operations",
+            "Update session statistics"
+          ]
+        },
+        {
+          "phase": "control-input",
+          "description": "Process router-directed input messages",
+          "actions": [
+            "Read messages from INBOX",
+            "Dispatch messages by channel",
+            "Apply link/unlink commands by appending events",
+            "If quit message observed, set quit-requested flag"
+          ]
+        },
+        {
+          "phase": "state-projection",
+          "condition": "routing table or session state dirty",
+          "actions": [
+            "Rewrite routes.json if routing table changed",
+            "Rewrite status.json"
+          ]
+        },
+        {
+          "phase": "delay",
+          "description": "Sleep for configured delay interval",
+          "parameters": [
+            "router.delay_seconds"
+          ]
+        }
+      ]
+    },
+    "shutdown-sequence": [
+      {
+        "step": "enter-draining-mode",
+        "description": "Freeze routing topology and stop processing input messages",
+        "effects": [
+          "Routing table becomes read-only",
+          "INBOX is ignored",
+          "No delay is applied between delivery passes"
+        ]
+      },
+      {
+        "step": "emit-shutdown-message",
+        "description": "Write a shutdown lifecycle message to the router OUTBOX"
+      },
+      {
+        "step": "drain-delivery",
+        "description": "Perform delivery passes until all eligible outbound messages are delivered",
+        "mode": "draining",
+        "delivery-scope": [
+          "Only the router OUTBOX is considered as a source",
+          "Only routes relevant to lifecycle message delivery are applied"
+        ],
+        "exit-condition": "router OUTBOX contains no further deliverable messages"
+      },
+      {
+        "step": "final-state-publication",
+        "description": "Write final derived projections (routes.json, status.json)"
+      },
+      {
+        "step": "process-exit",
+        "description": "Exit the router process cleanly"
+      }
+    ],
+    "delivery-engine": {
+      "single-implementation": true,
+      "modes": {
+        "normal": {
+          "sources": "All route-defined source folders",
+          "inputs-processed": true,
+          "routing-table-mutable": true,
+          "delay-applied": true
+        },
+        "draining": {
+          "sources": "Router OUTBOX only",
+          "inputs-processed": false,
+          "routing-table-mutable": false,
+          "delay-applied": false
+        }
+      },
+      "invariant": "The same delivery planner and executor are used in all modes; only source eligibility and side effects differ."
+    },
+    "quit-semantics": {
+      "trigger": "receipt of a quit input message",
+      "observed-in": "normal mode only",
+      "behavior": [
+        "Quit is honored only at loop boundaries",
+        "In-progress delivery pass is completed",
+        "Routing table is frozen before draining begins"
+      ],
+      "non-goals": [
+        "Immediate termination",
+        "Signal-based interruption",
+        "Forced shutdown"
+      ]
+    }
+  },
   "lionscliapp-config": {
     "config-keys": {
       "path.control_inbox": "router/control/inbox",
@@ -241,101 +717,128 @@
       "json.indent.state": 2
     }
   },
-  "WINGCAT: I'M RELOCATING THIS INTO THE REST OF THE DOCUMENT WITH YOU": {
-    "control_protocol": {
-      "DIRECTION TO WING-CAT": "PLEASE HELP ME PUT THIS INTO THE INPUT-OUTPUT-SURFACE, PATCHBOARD COMMUNICATIONS",
-      "transport": "FileTalk JSON files dropped into path.control_inbox",
-      "response": "optional ack/nack dropped into path.control_outbox",
-      "notify": "state-changed notice dropped into path.notify_outbox",
-      "control_message_common_fields": {
-        "msgtype": "router.control",
-        "op": "connect|disconnect|enable|disable|clear|list|set|ping",
-        "request_id": "string (recommended)",
-        "reply_to": "optional outbox path for directed replies",
-        "ts_utc": "optional"
-      },
-      "ops": {
-        "connect": {
-          "adds_route": true,
-          "required_fields": [
-            "from_outbox",
-            "from_channel",
-            "to_inbox",
-            "to_channel"
-          ],
-          "optional_fields": [
-            "route_id",
-            "enabled",
-            "mode",
-            "notes"
-          ],
-          "route_id_rule": "if missing, router generates stable id"
-        },
-        "disconnect": {
-          "removes_route": true,
-          "match": "by route_id preferred; else by 4-tuple from/to"
-        },
-        "enable": {
-          "sets_enabled": true,
-          "match": "route_id"
-        },
-        "disable": {
-          "sets_enabled": false,
-          "match": "route_id"
-        },
-        "clear": {
-          "removes_all_routes": true
-        },
-        "list": {
-          "returns_state_subset": [
-            "routes"
-          ]
-        },
-        "set": {
-          "mutates_runtime_config": true,
-          "allowed_keys": [
-            "router.delay_seconds",
-            "router.max_deliveries_per_tick",
-            "router.discard_unrouted"
-          ]
-        },
-        "ping": {
-          "returns": "pong + state summary"
-        }
-      },
-      "notify_message": {
-        "msgtype": "router.notice",
-        "event": "state_changed",
-        "reason": "connect|disconnect|enable|disable|clear|set|startup|shutdown",
-        "router_state_path": "path.state_file",
-        "tick": "int",
-        "ts_utc": "optional"
-      },
-      "ack_message": {
-        "msgtype": "router.ack",
-        "request_id": "echo",
-        "ok": true,
-        "error": "string if ok=false",
-        "result": "optional payload (e.g., route_id, routes list)"
+  "routing-semantics": {
+    "match_rule": "message.channel must equal route.from.channel, unless route.from.channel == '*'",
+    "delivery_rule": "for each source message, deliver to ALL matching enabled routes (fanout)",
+    "channel_rewrite": "delivered_message.channel becomes route.to.channel",
+    "delete_rule": "delete source only after all required deliveries succeed for that message",
+    "discard_unrouted_rule": "if no routes match and router.discard_unrouted=true, delete source after read; else leave it",
+    "error_handling": [
+      "if source JSON unreadable (likely still writing), skip this tick",
+      "if inbox missing, count skipped_missing_folder and do not delete source",
+      "if delivery write fails, do not delete source"
+    ],
+    "invariants": {
+      "source_deletion_safety": {
+        "rule": "A source message file MUST NOT be deleted until all required destination writes for that message have completed successfully.",
+        "motivation": [
+          "Preserves at-least-once delivery semantics across fan-out",
+          "Prevents silent message loss during partial failures",
+          "Aligns with FileTalk transport expectations regarding message lifecycle"
+        ],
+        "relationship_to_transport": [
+          "Unreadable files are presumed incomplete and retried later",
+          "Deletion is the final step in the message lifecycle"
+        ]
       }
+    }
+  },
+  "la-la-routing-policy": {
+    "strategy": {
+      "name": "la-la",
+      "description": "The la-la routing policy prioritizes simplicity, throughput, and composability over strict delivery guarantees.",
+      "rationale": [
+        "Filesystem durability operations such as fsync introduce severe performance penalties and are not suitable as a default.",
+        "Stricter delivery semantics would require additional filename state conventions or transport-level coordination, which would constitute a change to the FileTalk file transport specification.",
+        "The la-la policy aligns with the FileTalk principle that valid JSON defines message completeness, and that incomplete files are ignored until complete."
+      ],
+      "delivery-guarantee": "at-least-once",
+      "notes": [
+        "Systems requiring effective once-only processing MAY include stable transaction or message identifiers within message signals.",
+        "Consumers MAY use such identifiers to implement idempotent or exactly-once application semantics independently of the router."
+      ]
     },
-    "routing_semantics": {
-      "match_rule": "message.channel must equal route.from.channel, unless route.from.channel == '*'",
-      "delivery_rule": "for each source message, deliver to ALL matching enabled routes (fanout)",
-      "channel_rewrite": "delivered_message.channel becomes route.to.channel",
-      "delete_rule": "delete source only after all required deliveries succeed for that message",
-      "discard_unrouted_rule": "if no routes match and router.discard_unrouted=true, delete source after read; else leave it",
-      "error_handling": [
-        "if source JSON unreadable (likely still writing), skip this tick",
-        "if inbox missing, count skipped_missing_folder and do not delete source",
-        "if delivery write fails, do not delete source"
+    "outbox-message-visibility": {
+      "rule": "A file in an outbox directory is considered a message if and only if it can be parsed as valid JSON.",
+      "interpretation": [
+        "Files that cannot be parsed as valid JSON are presumed to be in-progress writes.",
+        "Unparsable files are ignored by the router and retried in subsequent routing passes.",
+        "Once a file becomes parseable, it is treated as complete and stable."
+      ]
+    },
+    "delivery-procedure": {
+      "phases": [
+        {
+          "phase": "planning",
+          "description": "The router scans all configured outbox directories and computes the complete set of copy operations and delete operations implied by the current routing table."
+        },
+        {
+          "phase": "copy",
+          "description": "All planned copy operations are performed in sequence, copying source message files to their destination inbox directories."
+        },
+        {
+          "phase": "delete",
+          "description": "After the copy phase completes, all planned source deletions are performed."
+        }
+      ],
+      "invariants": [
+        "A source message file is not deleted until all planned copy operations for that message have been attempted.",
+        "Copy and delete operations are not interleaved for a given routing pass."
+      ]
+    },
+    "failure-posture": {
+      "crash-tolerance": [
+        "If the router process terminates during the copy phase, partial destination files may exist and source files may remain.",
+        "If the router process terminates before the delete phase completes, source files may be reprocessed on restart."
+      ],
+      "consequences": [
+        "Duplicate deliveries are possible across process restarts.",
+        "Partial destination files may exist temporarily."
+      ],
+      "mitigations": [
+        "Consumers MAY implement idempotent processing using message identifiers carried in message signals.",
+        "External maintenance tools MAY identify and clean up abandoned or partial files ('zombies')."
+      ],
+      "non-goals": [
+        "Preventing duplicate delivery under crash conditions",
+        "Ensuring exactly-once effects at the router level",
+        "Durable per-message delivery logging"
       ]
     }
   },
   "implementation_plan": {
     "steps": {
-      "10 - Design Simple Specification": {},
-      "20 - Implement in Claude Code": {}
+      "10 - Design Simple Specification": {
+        "status": "in-progress",
+        "notes": [
+          "Define Patchboard Router scope and boundaries",
+          "Restrict input surface to link/unlink only",
+          "Defer parameter schemas until routing table is specified"
+        ]
+      },
+      "12 - Define Routing Table Structure": {
+        "status": "pending",
+        "notes": [
+          "Specify in-memory and persisted representation of routing table",
+          "Define identity and equality semantics for routes",
+          "Determine minimal information required to create and remove a route"
+        ]
+      },
+      "13 - Specify link / unlink Signal Shapes": {
+        "status": "pending",
+        "depends_on": [
+          "15 - Define Routing Table Structure"
+        ],
+        "notes": [
+          "Define signal payloads for link and unlink channels",
+          "Ensure payloads are expressed in Patchboard Core–generic terms",
+          "Avoid embedding transport or filesystem assumptions"
+        ]
+      },
+      "15 - Define fileystem locations for publishing and serialization artifacts": {},
+      "20 - Implement in Claude Code": {
+        "status": "pending"
+      }
     }
   },
   "progress": {
@@ -351,21 +854,74 @@
         "specification": {
           "core_document": "YELLOW",
           "cli_commands": {
-            "run": "YELLOW",
-            "status": "YELLOW",
-            "routes": "YELLOW",
-            "link": "YELLOW",
-            "unlink": "YELLOW"
+            "run": "GREEN",
+            "status": "GREEN",
+            "routes": "GREEN",
+            "link": "GREEN",
+            "unlink": "GREEN"
           },
-          "filetalk_control_protocol": "YELLOW",
-          "state_publication": "YELLOW",
-          "change_notifications": "YELLOW",
-          "routing_semantics": "YELLOW",
-          "zombie_cleanup": "RED",
-          "on_disk_layout": "RED",
-          "route_id_scheme": "RED"
+          "app-flow": "GREEN",
+          "filetalk_inputs": {
+            "link": "GREEN",
+            "unlink": "GREEN"
+          },
+          "filetalk_outputs": {
+            "change-notice": "GREEN",
+            "startup": "GREEN",
+            "shutdown": "GREEN"
+          },
+          "state_publication": "GREEN",
+          "filetalk.routes": "GREEN",
+          "routing-semantics": "GREEN",
+          "route-description-scheme": "GREEN",
+          "routing-policy": "GREEN",
+          "path-canonicalization": "GREEN",
+          "filesystem-layout": {
+            "INBOX": "GREEN",
+            "OUTBOX": "GREEN",
+            "status": "GREEN",
+            "events-log": "GREEN",
+            ".lionscliapp": "GREEN"
+          },
+          "event-schema": "GREEN"
+        },
+        "implementation": {
+          "message-delivery": {
+            "basic": "RED",
+            "fan-out": "RED"
+          }
         }
       }
+    }
+  },
+  "external-tasks": {
+    "zombie-detector": {
+      "status": "out-of-scope",
+      "description": "A separate maintenance process responsible for identifying and cleaning up stalled or orphaned message files.",
+      "non-membership": [
+        "This functionality is explicitly NOT part of the Patchboard Router in v0.1"
+      ],
+      "problem_statement": [
+        "Files may remain indefinitely due to crashed writers or failed consumers",
+        "The router intentionally treats unreadable JSON as 'in-progress' indefinitely"
+      ],
+      "proposed_approach": [
+        "Periodically scan inbox and outbox directories",
+        "Compute content hashes (e.g., HMAC or digest)",
+        "Identify files whose contents do not change over a defined time window",
+        "Classify such files as zombies"
+      ],
+      "possible_actions": [
+        "Delete zombie files",
+        "Archive zombie files",
+        "Emit reports or notices for operator inspection"
+      ],
+      "future_relationship_to_router": [
+        "May be integrated as an optional auxiliary service",
+        "May emit FileTalk notices",
+        "Must not violate router correctness invariants"
+      ],
+      "tracking_key": "zombie-detector"
     }
   }
 }
