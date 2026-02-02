@@ -20,11 +20,6 @@ By operating at the level of files, systems become:
 FileTalk is not a framework.
 It is a way of thinking about systems.
 
-This repository contains the **FileTalk worldview** and two concrete projects that grow naturally from it:
-
-* 🪪 **JSON Run Cards** — how programs are launched and how runs are observed
-* 🔌 **Patchboard** — how programs are wired into live, reconfigurable systems
-
 ---
 
 ## 🌿 Start Here: The Manifesto
@@ -32,7 +27,7 @@ This repository contains the **FileTalk worldview** and two concrete projects th
 ### 📜 FileTalk (The Manifesto)
 
 **What it is:**
-The foundational statement of FileTalk’s philosophy and goals.
+The foundational statement of FileTalk's philosophy and goals.
 
 * Defines *what FileTalk is and is not*
 * Epoch-agnostic
@@ -43,45 +38,7 @@ Everything else in this repository flows from the ideas in [the Manifesto.](docs
 
 ---
 
-## 🧭 Two Projects Under the FileTalk Umbrella
-
-FileTalk itself is a worldview, not a protocol suite.
-However, certain recurring needs arise naturally in FileTalk-style systems.
-This repository develops two complementary projects to address those needs.
-
----
-
-### 🪪 JSON Run Cards (Execution & Observability)
-
-**What it is:**
-A concrete convention for representing program runs using paired JSON artifacts:
-
-* **Job Cards** — describe what work to perform
-* **Report Cards** — summarize what happened during the run
-
-Run Cards provide a simple, tool-friendly interface between:
-
-* runners,
-* schedulers,
-* dashboards,
-* and the programs being executed.
-
-They intentionally:
-
-* eliminate ad-hoc command-line argument parsing,
-* replace shell incantations with structured data,
-* and make runs replayable, inspectable, and automatable.
-
-Run Cards say:
-
-> “Here is the work.”
-> “Here is the report.”
-
-They are compatible with FileTalk systems, but not dependent on any particular system architecture.
-
----
-
-### 🔌 Patchboard (System Wiring & Message Routing)
+## 🔌 Patchboard: System Wiring & Message Routing
 
 **What it is:**
 A modular architecture for building live systems out of many small programs.
@@ -92,6 +49,11 @@ Patchboard introduces:
 * standardized message files,
 * external routing via a Patchboard Router,
 * and dynamic rewiring of program connections.
+
+**Specifications:**
+
+* 📄 [Patchboard Core Message Spec](docs/spec/patchboard-core.v1.md) — the fundamental message format (channel, signal, timestamp)
+* 📄 [Patchboard File Transport Spec](docs/spec/patchboard-file-transport.v1.md) — how messages are represented as files in INBOX/OUTBOX directories
 
 Programs emit messages without knowing where they will go.
 Connections are defined outside the programs themselves.
@@ -122,19 +84,7 @@ The **worldview**.
 
 ---
 
-### 2️⃣ JSON Run Cards
-
-The **execution interface**.
-
-* Job Cards and Report Cards
-* Used by runners, schedulers, and dashboards
-* About starting programs and observing runs
-
-Not about inter-program messaging.
-
----
-
-### 3️⃣ Patchboard
+### 2️⃣ Patchboard
 
 The **system architecture**.
 
@@ -143,17 +93,39 @@ The **system architecture**.
 
 ---
 
-### 4️⃣ Patchboard Router
+### 3️⃣ Patchboard Router
 
 The **routing fabric**.
 
 * Watches module outboxes
-* Copies messages into inboxes based on patch maps
+* Copies messages into inboxes based on routing tables
 * Enables rewiring without restarting modules
+* Emits lifecycle messages (startup, shutdown, change notices)
+
+The Patchboard Router is a headless, file-controlled process. Routes are added and removed by sending messages to its inbox. The router publishes its state as JSON files for external inspection.
+
+**CLI Commands:**
+
+```
+patchboard run       # Launch the router
+patchboard status    # Display current state
+patchboard routes    # Display routing table
+patchboard link      # Request route creation
+patchboard unlink    # Request route removal
+patchboard quit      # Request graceful shutdown
+```
+
+**Route creation example:**
+
+```
+patchboard link --sf /path/to/OUTBOX --sc data --df /path/to/INBOX --dc received
+```
+
+This creates a route: messages with channel "data" in the source OUTBOX are delivered to the destination INBOX with channel "received".
 
 ---
 
-### 5️⃣ Patchboard Modules
+### 4️⃣ Patchboard Modules
 
 The **participants**.
 
@@ -188,12 +160,11 @@ Patchboard Modules are a **native participation style**, not a requirement.
 
 ---
 
-## 📌 Status (2026-01-27)
+## 📌 Status (2026-02-02)
 
 * **FileTalk Manifesto:** stable and canonical
-* **JSON Run Cards:** active, early but stabilizing
 * **Patchboard Architecture:** active and evolving
-* **Patchboard Router:** currently primitive and experimental
+* **Patchboard Router:** implemented and functional
 * **Modules & Examples:** early prototypes
 
 This repository prioritizes **clarity and direction** over completeness.
@@ -216,15 +187,14 @@ It is about **understandability over time**.
 
 ---
 
-## 🔮 What’s Coming
+## 🔮 What's Coming
 
-In the near future, this repository will grow to include:
+Future development may include:
 
-* reference runners for JSON Run Cards
-* a more capable Patchboard Router
 * example Patchboard Modules
 * small, composable utilities
 * complete demonstration systems
+* monitoring and diagnostic tools
 
 All additions will follow the spirit of the Manifesto:
 plain, inspectable, and remixable.
