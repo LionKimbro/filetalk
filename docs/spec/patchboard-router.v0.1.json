@@ -27,14 +27,133 @@
     "execution": "launched as a Python module: python -m patchboard"
   },
   "input-output-surface": {
-    "cli": {},
+    "cli": {
+      "overview": {
+        "intent": "Provide a minimal command-line surface for launching the router and inspecting its externally-published state.",
+        "implementation": "made by, and must conform to, lionscliapp module",
+        "authority_model": {
+          "authoritative_process": "run",
+          "read_only_processes": [
+            "status",
+            "routes"
+          ],
+          "note": "Only the 'run' command may mutate router state or routing tables. All other commands are strictly read-only or indirect."
+        }
+      },
+      "policy": {
+        "exclude": {
+          "principle": {
+            "exclude what changes": "exclude what WILL change during the life of the run",
+            "mutation will occur via Patchboard control messages": "they will come through the INBOX of the patchboard router",
+            "persistence": "will be taken care of by the router application itself"
+          },
+          "specifics": {
+            "routing-tables": "these are changed frequently during the execution of the program",
+            "polling-frequency": "this should be adjustable for the entire execution of the program, perhaps even individuated for specific routes"
+          }
+        },
+        "include": {
+          "principle": "include what will NOT change during the life of the program",
+          "specifics": {
+            "filesystem-roots": {},
+            "log-locations": {},
+            "identity/packaging": {}
+          }
+        }
+      },
+      "commands": {
+        "run": {
+          "description": "Launch the Patchboard Router main loop. This process has authoritative access to all router state, routing tables, event logs, and FileTalk I/O.",
+          "behavior": [
+            "Initializes filesystem paths",
+            "Publishes initial system state",
+            "Emits lifecycle startup notice",
+            "Begins polling loop for control messages and routed traffic"
+          ],
+          "authority": "read-write",
+          "notes": [
+            "Exactly one 'run' process may be active per router instance",
+            "All state mutation occurs exclusively within this process"
+          ]
+        },
+        "status": {
+          "description": "Display the current externally-published router state.",
+          "behavior": [
+            "Reads the router state JSON file",
+            "Renders summary information to stdout"
+          ],
+          "authority": "read-only",
+          "data_source": "path.state_file",
+          "notes": [
+            "Does not communicate with the running router process",
+            "Safe to invoke concurrently with 'run'"
+          ]
+        },
+        "routes": {
+          "description": "Display the currently configured routing table.",
+          "behavior": [
+            "Reads the router state JSON file",
+            "Extracts and renders the 'routes' section"
+          ],
+          "authority": "read-only",
+          "data_source": "path.state_file",
+          "notes": [
+            "This command is informational only",
+            "Route changes must be performed via FileTalk control messages"
+          ]
+        },
+        "link": {
+          "description": "Request creation of a routing connection by emitting a FileTalk control message to the running router.",
+          "behavior": [
+            "Constructs a FileTalk control message",
+            "Writes the message into the router control inbox"
+          ],
+          "authority": "indirect",
+          "mechanism": "filetalk-message",
+          "notes": [
+            "This command does not modify router state directly",
+            "The running 'run' process may accept or reject the request"
+          ]
+        },
+        "unlink": {
+          "description": "Request removal of a routing connection by emitting a FileTalk control message to the running router.",
+          "behavior": [
+            "Constructs a FileTalk control message",
+            "Writes the message into the router control inbox"
+          ],
+          "authority": "indirect",
+          "mechanism": "filetalk-message",
+          "notes": [
+            "Actual state changes are performed only by the 'run' process",
+            "Failure or success is observable via published state or notices"
+          ]
+        }
+      }
+    },
     "patchboard": {
       "input": {
-        "connecting": {},
-        "disconnecting": {}
+        "link-cmd": {},
+        "unlink-cmd": {}
       },
       "output": {
-        "change-publication": {}
+        "change-notice": {
+          "message-channel": "router.notice",
+          "event": "state-changed",
+          "detail_level": "minimal",
+          "policy": {
+            "description": "The router emits a coarse-grained 'something has changed' notice rather than detailed diffs.",
+            "rationale": [
+              "Encourages observers to read authoritative state directly",
+              "Avoids over-coupling observers to router internals",
+              "Keeps notification traffic small and stable"
+            ],
+            "future-extension": "More detailed notices or notices to specific named channels MAY be added later if performance analysis demonstrates a need."
+          },
+          "notes": [
+            "Observers are expected to re-read published state upon receipt",
+            "This policy is considered a design feature, not a limitation"
+          ]
+        }
       }
     },
     "filetalk": {
@@ -220,6 +339,33 @@
     }
   },
   "progress": {
-    "step": "10 - Design Simple Specification"
+    "step": "10 - Design Simple Specification",
+    "dashboard": {
+      "overall": "YELLOW",
+      "legend": {
+        "RED": "not yet specified/implemented",
+        "YELLOW": "partially specified or under discussion, or partially functional",
+        "GREEN": "fully specified and agreed, or fully functional"
+      },
+      "status": {
+        "specification": {
+          "core_document": "YELLOW",
+          "cli_commands": {
+            "run": "YELLOW",
+            "status": "YELLOW",
+            "routes": "YELLOW",
+            "link": "YELLOW",
+            "unlink": "YELLOW"
+          },
+          "filetalk_control_protocol": "YELLOW",
+          "state_publication": "YELLOW",
+          "change_notifications": "YELLOW",
+          "routing_semantics": "YELLOW",
+          "zombie_cleanup": "RED",
+          "on_disk_layout": "RED",
+          "route_id_scheme": "RED"
+        }
+      }
+    }
   }
 }
