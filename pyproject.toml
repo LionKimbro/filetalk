@@ -12,10 +12,13 @@ authors = [
   { name = "Lion Kimbro" }
 ]
 
-dependencies = []
+dependencies = [
+  "lionscliapp",
+]
 
 [project.scripts]
 runner = "runner:main"
+patchboard = "patchboard_router.router:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
