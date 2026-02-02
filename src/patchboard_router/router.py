@@ -618,14 +618,23 @@ def run_main_loop():
         time.sleep(delay)
 
 
+def has_messages_in_router_outbox():
+    """Check if router OUTBOX has any message files."""
+    outbox = g["outbox_path"]
+    if not outbox.exists():
+        return False
+    return any(outbox.glob("*.json"))
+
+
 def enter_draining_mode_and_drain():
     """Freeze routing, emit shutdown, drain deliveries from router OUTBOX."""
     g["mode"] = "draining"
 
     emit_shutdown_message_and_event()
 
-    # Drain: keep delivering from router OUTBOX until empty
-    while has_deliverable_messages_in_router_outbox():
+    # Drain: keep delivering from router OUTBOX until completely empty
+    # (delivers routed messages, discards unrouted ones)
+    while has_messages_in_router_outbox():
         do_delivery_pass("d")
 
 

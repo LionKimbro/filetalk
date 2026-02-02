@@ -789,3 +789,27 @@ class TestIntegration:
         # Add route for shutdown
         router.add_route(router_outbox, "shutdown", "shutdown", dest)
         assert router.has_deliverable_messages_in_router_outbox() is True
+
+    def test_shutdown_discarded_when_no_subscribers(self, temp_dir, reset_globals):
+        """Test that shutdown message is discarded when no one is subscribed."""
+        router_outbox = temp_dir / "router" / "OUTBOX"
+        router_outbox.mkdir(parents=True)
+
+        router.g["events_path"] = temp_dir / "events.jsonl"
+        router.g["outbox_path"] = router_outbox
+        router.g["router_id"] = "test-router"
+        router.g["started_at_utc"] = "12345"
+
+        # NO routes - no one subscribed to shutdown
+
+        import lionscliapp as app
+        app.reset()
+        app.declare_app("test", "1.0")
+        app.declare_key("router.discard_unrouted", True)
+
+        # Run draining sequence
+        router.enter_draining_mode_and_drain()
+
+        # Verify shutdown message was discarded (OUTBOX is empty)
+        assert len(list(router_outbox.glob("*.json"))) == 0
+        assert router.g["stats"]["discarded_unrouted"] == 1
