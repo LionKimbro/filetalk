@@ -1,0 +1,584 @@
+{
+  "parts": [
+    {
+      "id": "II",
+      "title": "GUIDELINES",
+      "date": "2025-10-29",
+      "sections": [
+        {
+          "title": "Global Variables",
+          "items": [
+            "IGNORE the cultural taboo against globals; they simplify programs.",
+            "Give each global a use policy -- clear rules for when and how it may be modified.",
+            "Global dictionaries and lists live at top level; mutate them in place, never re-assign.",
+            "Group scalar bundles (numbles, strings, etc.,) into bundles -- small, thematically related namespaces that are easy to inspect together while debugging.",
+            "Keep large or transient data out of these bundles, or place them in their own bundles.",
+            "The canonical global bundle is named \"g\".",
+            "The \"global\" keyword is never required: globals are never rebound, only modified in place."
+          ],
+          "example": {
+            "kind": "code",
+            "language": "python",
+            "lines": [
+              "g = {",
+              "  \"count\": 0,",
+              "  \"mode\" : \"idle\",",
+              "}",
+              "",
+              "events = []",
+              "",
+              "def step():",
+              "    g[\"count\"] += 1",
+              "    if g[\"mode\"] == \"idle\":",
+              "        print(\"waiting...\")",
+              "",
+              "def log_event(msg):",
+              "    events.append((g[\"count\"], msg))"
+            ]
+          }
+        },
+        {
+          "title": "Constants",
+          "items": [
+            "Hard coded file paths are always constants.",
+            "Hard coded magic numbers are always constants.",
+            "Lookup tables are always constants.",
+            "If you are using symbols, then non-symbol named constants are given a name that is \"k\" (for \"constant\") + an all capital letters identifier."
+          ],
+          "example": {
+            "kind": "code",
+            "language": "python",
+            "lines": [
+              "kFOO = 10",
+              "kBAR = \"bar\"",
+              "kCOLORS = {RED: \"#ff0000\", GREEN: \"#00ff00\", BLUE: \"#0000ff\"}",
+              "kCONFIGFILE_PATH = Path(\"D:\\\\conf\\\\program_x_config.json\")"
+            ]
+          }
+        },
+        {
+          "title": "Paths",
+          "items": [
+            "Always use pathlib.Path."
+          ]
+        },
+        {
+          "title": "Function Arguments",
+          "items": [
+            "Do NOT use type annotations like \"key: str\" -- just \"key\" is fine.",
+            {
+              "rule": "Functions should have 0, 1, or 2 data arguments, with an optional final flags argument. Total arity must not exceed 3.",
+              "model": {
+                "base_arity": "Functions take 0, 1, or 2 arguments that carry data.",
+                "flags": "Any function may optionally accept a final flags argument, bringing total arity to at most 3."
+              },
+              "cases": [
+                {
+                  "arity": 0,
+                  "name": "nullary",
+                  "meaning": "the function simply does something.",
+                  "examples": [
+                    "refresh()",
+                    "reset()",
+                    "refresh(\"f\")"
+                  ]
+                },
+                {
+                  "arity": 1,
+                  "meaning": "the argument should be a value that genuinely varies per call.",
+                  "examples": [
+                    {
+                      "example": "say(\"hello\")",
+                      "valid": true,
+                      "reason": "the message changes each call."
+                    },
+                    {
+                      "example": "say(\"hello\", \"c\")",
+                      "valid": true,
+                      "reason": "flags modify behavior (output to console)."
+                    },
+                    {
+                      "example": "doit(system_configuration)",
+                      "valid": false,
+                      "reason": "configuration is contextual; it belongs in globals, not in parameters."
+                    }
+                  ]
+                },
+                {
+                  "arity": 2,
+                  "meaning": "either a key/value pair, or two meaningful data arguments.",
+                  "examples": [
+                    {
+                      "example": "set_color(\"background\", \"blue\")",
+                      "valid": true,
+                      "reason": "key/value."
+                    },
+                    {
+                      "example": "set_color(\"background\", \"blue\", \".\")",
+                      "valid": true,
+                      "reason": "flags modify behavior (dot stipple pattern)."
+                    },
+                    {
+                      "example": "say(\"hello\", console)",
+                      "valid": false,
+                      "reason": "second argument is contextual."
+                    }
+                  ]
+                }
+              ],
+              "flags": {
+                "position": "Flags, if present, must be the final argument.",
+                "representation": "Flags are represented as single-character strings.",
+                "semantics": "Flags are order-independent and must be treated as a set, not a sequence.",
+                "combination": "Multiple flags may be combined by concatenating characters into a single string."
+              },
+              "mutual_exclusion": {
+                "rule": "Some flags may be mutually exclusive.",
+                "behavior": "If mutually exclusive flags are provided together, this is a runtime error and must raise an exception.",
+                "validation": "Functions should explicitly test for invalid flag combinations when such exclusions exist."
+              },
+              "helpers": {
+                "guidance": "If validation of mutually exclusive flags becomes common, introduce a shared helper function to validate flag sets.",
+                "policy": "Do not introduce helper infrastructure preemptively; add it only when repetition justifies it."
+              },
+              "note": "Flags modify behavior only. They do not carry data. Parameters carry data; globals carry context."
+            }
+          ]
+        },
+        {
+          "title": "Type Annotations",
+          "items": [
+            "DO NOT use type annotations, unless there is a specifically demanding reason."
+          ]
+        },
+        {
+          "title": "Decorators",
+          "items": [
+            "DO NOT use decorators, unless there is a specifically demanding reason."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "III",
+      "title": "FUNCTION NAMES",
+      "date": "2025-11-18",
+      "intro": [
+        "These naming conventions create a street map of procedures — a small,",
+        "deliberate set of signals that turn a codebase into a place you can",
+        "move through with ease. Primitives become the highways of the system:",
+        "short, fast, used constantly. General verb-object functions form the",
+        "main roads, steady and familiar. Predicates are the road signs that",
+        "guide your decisions. One-off functions become the side paths and",
+        "alleys, each with a clearly marked purpose. And callback handlers act",
+        "as the city gates, announcing when the outside world enters.",
+        "",
+        "The effect is a codebase with shape, hierarchy, and terrain.  Patterns",
+        "of flow become visible the way avenues and lanes do when you look at a",
+        "real map. A reader can tell at once where the major currents run,",
+        "where a small detour lives, and where external events arrive.",
+        "",
+        "This structure means the codebase can be read like a map instead of a",
+        "maze — coherent, navigable, and intuitively organized, even before you",
+        "know every street by name."
+      ],
+      "sections": [
+        {
+          "category": "PRIMITIVES",
+          "pattern": "one word",
+          "definition": "Functions called extremely frequently (multiple times per 50–100 lines) should use a single-word name. These form the “core vocabulary” of the machine.",
+          "examples": [
+            "log(\"...\")",
+            "send(msg)",
+            "recv()",
+            "push(obj)",
+            "pop()",
+            "flush()"
+          ],
+          "characteristics": [
+            "minimal conceptual weight",
+            "high-frequency",
+            "context does most of the disambiguation",
+            "flags and global state may refine behavior internally"
+          ]
+        },
+        {
+          "category": "GENERAL FUNCTIONS",
+          "pattern": "verb_object",
+          "definition": "For the majority of reusable functions:",
+          "rules": [
+            "Use verb_object",
+            "Prefer simplicity over precision",
+            "Let context and flags disambiguate"
+          ],
+          "examples": [
+            "send_message(msg, flags=\"..\")",
+            "store_photo(data)",
+            "lookup_key(k)",
+            "process_event(evt)"
+          ],
+          "note": "These define the ordinary action layer of the system: steady, reliable, predictable."
+        },
+        {
+          "category": "ONE-OFF FUNCTIONAL UNITS",
+          "pattern": "really_long_and_really_descriptive_function_names",
+          "definition": "When a piece of code is ONLY ever called (and only ever TO be called) from one location and one location only, use really_long_and_really_descriptive_function_names.",
+          "reasoning": [
+            "In the main, this is for the purpose of breaking a function into peer-sized portions, to prevent one function from getting overloaded.",
+            "It is like a portion of an outline, broken into sub-parts.",
+            "Also, due to how my argument systems go, they are typically 0-arguments.",
+            "So they can just read like prose.",
+            "And they are called uniquely, so it's not spamming the code-base.",
+            "It makes it really clear what this is for, what it's about."
+          ],
+          "purpose": [
+            "Signals: \"This is basically a labelled code block.\"",
+            "Clarifies: \"This is NOT intended for general calling.\"",
+            "Protects namespace clarity.",
+            "Improves high-level scanning."
+          ],
+          "examples": [
+            "rebuild_everything_from_disk_now()",
+            "do_initial_pipeline_routing_setup()",
+            "update_filetree_cache_after_reload()",
+            "check_for_restart_request_and_handle()"
+          ]
+        },
+        {
+          "category": "PREDICATES",
+          "definition": "Predicates are boolean-returning functions that express conditions, readiness, permission, or intent. Their names must read like true/false questions and clearly signal whether they are reusable system checks or single-context conditions.",
+          "types": [
+            {
+              "type": "System-Wide Predicates",
+              "description": "Short, reusable status checks used in multiple locations across the codebase.",
+              "allowed_prefixes": {
+                "is_": "state inquiry",
+                "has_": "possession/existence",
+                "should_": "policy or intention check",
+                "may_": "permission, capability, or conditional allowance"
+              },
+              "naming_pattern_note": "Naming pattern is not strict.",
+              "naming_patterns": [
+                "is_<adjective_or_role>_<noun>()",
+                "has_<noun>()",
+                "should_<verb>()",
+                "may_<verb>()"
+              ],
+              "examples": [
+                "is_system_ready()",
+                "is_stream_open()",
+                "has_outbox_messages()",
+                "has_pending_uploads()",
+                "should_persist_now()",
+                "should_retry_later()",
+                "may_attempt_reconnect()"
+              ],
+              "flags_note": "These predicates may use flags internally to support multiple modes.",
+              "flag_examples": [
+                "is_ready(\"S\")  # system",
+                "is_ready(\"R\")  # robot"
+              ],
+              "constraint": "All such predicates remain short, because they serve as stable, reusable building blocks of the system's logic."
+            },
+            {
+              "type": "Single-Context Predicates",
+              "description": "Long, prose-like names for predicates used in only one location or unique to a particular flow.",
+              "naming_patterns": [
+                "is_this_the_first_time_the_application_has_started()",
+                "should_we_reload_everything_from_disk_now()",
+                "has_user_already_selected_a_photo_this_session()",
+                "may_we_proceed_with_initial_pairing_setup()"
+              ],
+              "characteristics": [
+                "Used in one place only.",
+                "Highly descriptive.",
+                "Declarative and narrative.",
+                "Do not clutter the global vocabulary.",
+                "Prefixes (is_, has_, should_, may_) do not count as words for the \"3+ word\" rule"
+              ],
+              "note": "These predicates exist to break a large flow into named, readable segments without introducing conceptual weight or namespace pollution."
+            }
+          ]
+        },
+        {
+          "category": "CALLBACK HANDLERS",
+          "pattern": "handle_...()",
+          "definition": [
+            "Callback handlers are functions invoked by external systems or frameworks such as tkinter, sockets, network protocols, timers, event loops, file watchers, or GUI widgets.",
+            "They have signatures you often do not control and represent the “edges” of the program where the outside world triggers internal logic.",
+            "Because they are externally invoked and usually correspond to a unique event, callback handlers are nearly always single-source functions."
+          ],
+          "rules": [
+            {
+              "rule": "All callback handlers must begin with handle_ or on_ (general preference for handle_).",
+              "reason": "This guarantees that when scanning function lists, you can instantly identify all handlers."
+            },
+            {
+              "rule": "Callback handlers follow the long-name, 3+ word rule (prefix handle_ or on_ does NOT count as a word).",
+              "reasons": [
+                "they are nearly always called from a single place",
+                "they represent unique events",
+                "their meaning must be absolutely clear at a glance",
+                "they serve as labeled chapters in a procedural story",
+                "they improve traceability in stack traces"
+              ]
+            }
+          ],
+          "examples": [
+            "handle_when_user_clicks_the_pairing_button(event)",
+            "handle_when_the_socket_receives_a_packet(sock, data)",
+            "handle_when_the_camera_initialization_completes()",
+            "handle_when_desktop_sends_a_message(message)",
+            "handle_if_the_user_selects_a_new_photo()",
+            "handle_when_the_camera_connection_fails(error)",
+            "handle_after_receiving_mqtt_message_from_desktop(msg)",
+            "handle_if_user_confirms_file_overwrite()"
+          ]
+        },
+        {
+          "category": "FLAGS MAY SPLIT FUNCTIONALITY",
+          "definition": "When a function is high-value but multi-modal, prefer flags over many similar names. Use long internal helpers for clarity.",
+          "example": {
+            "kind": "code",
+            "language": "python",
+            "lines": [
+              "def send_message(msg, data=None, flags=\"\"):",
+              "    if flags == \"T\":",
+              "        _send_tcp_message(msg, data)",
+              "    elif flags == \"O\":",
+              "        _send_message_to_target_object(msg, data)",
+              "    elif flags == \"U\":",
+              "        _send_message_to_user(msg, data)",
+              "    else:",
+              "        raise ValueError(flags)"
+            ]
+          },
+          "resulting_architecture": [
+            "simple at call sites,",
+            "explicit inside"
+          ],
+          "statement": "This is a defining feature of my style, and should be preserved."
+        },
+        {
+          "category": "JUSTIFICATION",
+          "content": [
+            "Flags work because the surrounding context already supplies nearly all the meaning. In real code, function calls are read inside a story, not in isolation.",
+            "When you see:",
+            "  def handle_when_user_clicks_save_button():",
+            "      text = read_text(\"editor\")",
+            "      save_text(text, \"F\")   # file",
+            "Even without knowing the flag, it is clear what’s happening: a user clicked a Save button, and the text is being saved somewhere. The \"F\" simply confirms the destination.",
+            "Inside the implementation, the long descriptive functions carry the full clarity:"
+          ],
+          "example": {
+            "kind": "code",
+            "language": "python",
+            "lines": [
+              "def save_text(text, flags=\"F\"):",
+              "    if flags == \"F\":",
+              "        _save_text_to_file(text)",
+              "    elif flags == \"N\":",
+              "        _save_text_to_network(text)",
+              "    elif flags == \"D\":",
+              "        _save_text_to_dictionary(text)",
+              "    elif flags == \"C\":",
+              "        _save_text_to_cache(text)"
+            ]
+          },
+          "conclusion": [
+            "Because each flag has one consistent meaning everywhere in the system, flags do not create ambiguity — they avoid clutter while preserving intent.",
+            "Context carries the meaning; flags make it precise."
+          ]
+        },
+        {
+          "category": "INTERNAL HELPER NAMING",
+          "rules": [
+            "Internal helpers follow all the normal naming rules.",
+            "The only difference is: they begin with an underscore."
+          ],
+          "examples": [
+            "_send()",
+            "_save_text_to_file()",
+            "_is_ready()",
+            "_handle_when_socket_closes()"
+          ]
+        },
+        {
+          "category": "CLOSING",
+          "text": [
+            "These naming conventions are not rules for their own sake. They are a way of giving shape to the codebase — a way of making the structure visible, the flow intuitive, and the machinery easy to live inside.",
+            "They keep the surface simple, the details expressive, and the whole system navigable like a map instead of a maze.",
+            "Their purpose is to support clarity, momentum, and the pleasure of writing code that feels like walking a familiar city: coherent, readable, and always pointing you in the right direction."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "IV",
+      "title": "CLASSES",
+      "date": "2025-11-18",
+      "rules": [
+        {
+          "rule": "Avoid the use of classes. Prefer global functions and global variables.",
+          "note": "I recognize that this goes against the grain, but I follow the Principle of Minimal Expression."
+        },
+        {
+          "rule": "Acceptable exceptions include simple data containers such as Vector, Matrix, or similarly structured types."
+        },
+        {
+          "rule": "If you find yourself reaching for a class, that's okay, but pause:",
+          "subitems": [
+            "Ask how the same design could be expressed without a class, and we can add that pattern to this guide."
+          ]
+        }
+      ],
+      "example": {
+        "rather_than": {
+          "kind": "code",
+          "language": "python",
+          "lines": [
+            "class Counter:",
+            "    def __init__(self):",
+            "        self.count = 0",
+            "    def inc(self):",
+            "        self.count += 1",
+            "    def show(self):",
+            "        print(self.count)",
+            "",
+            "c = Counter()",
+            "c.inc()",
+            "c.show()"
+          ]
+        },
+        "write_this_instead": {
+          "kind": "code",
+          "language": "python",
+          "lines": [
+            "g = {\"count\": 0}",
+            "",
+            "def inc():",
+            "    g[\"count\"] += 1",
+            "",
+            "def show():",
+            "    print(g[\"count\"])",
+            "",
+            "inc()",
+            "show()"
+          ]
+        }
+      },
+      "todo": [
+        "INSERT OBJECT CURSORING EXAMPLE"
+      ]
+    },
+    {
+      "id": "V",
+      "title": "THREADS",
+      "date": "2025-11-18",
+      "stance": [
+        "Avoid threads whenever possible. They multiply complexity faster than they multiply performance."
+      ]
+    },
+    {
+      "id": "VII",
+      "title": "INTER-PROCESS COMMUNICATION",
+      "date": "2025-11-18",
+      "guidance": [
+        "Be aware of FileTalk — a simple, file-based system for programs to exchange information.",
+        "Consider what information your program might offer to others, and what it might receive in return."
+      ],
+      "filetalk_paradigm_extreme_synthesis": [
+        "Programs communicate by writing JSON files (with the extension .json) into designated receiving folders.",
+        "The outermost JSON value is always a list or dictionary.",
+        "Message delivery is not immediate; processes poll their receiving folders for new messages.",
+        "When reading, a process should retry if the file is not yet fully written — a successful parse of the outermost list or dictionary means the write is complete.",
+        "After a message is handled, the file should be deleted.",
+        "Archiving may be appropriate in special cases; ask before changing this behavior."
+      ],
+      "in_short": [
+        "My programs live in an ecology of processes that read and write one another’s files.",
+        "If your work involves multi-process coordination, ask about FileTalk conventions before proceeding."
+      ]
+    },
+    {
+      "id": "VIII",
+      "title": "DATA MANAGEMENT",
+      "date": "2025-11-18",
+      "sections": [
+        {
+          "title": "Persistent Storage",
+          "items": [
+            "Store data in JSON files whenever practical.",
+            "For small or human-edited files, use indented, readable JSON.",
+            "For long files, or machine-managed data, use compact (minified) JSON.",
+            "Always encode utf-8."
+          ]
+        },
+        {
+          "title": "Event Logs",
+          "items": [
+            "Store event logs one JSON object per line (the JSONL format).",
+            "Each new event is: (1) Appended to an in-memory log, and (2) Immediately written to disk (append-only).",
+            "Execution follows logging, either: immediately after writing to disk completes, or on a periodic polling loop that processes any unhandled events.",
+            "On startup, the program reconstructs state by replaying the event log in order."
+          ],
+          "snapshots": {
+            "label": "Snapshots (checkpoints of reconstructed state)",
+            "items": [
+              "Snapshots may be used to accelerate startup or to expose current state to other programs.",
+              "For collaborative systems, write snapshots promptly after each user-visible change.",
+              "For cautious systems, defer until explicit COMMIT or SAVE actions."
+            ]
+          },
+          "note": "Event logging is not appropriate for all programs — discuss with Lion before implementing."
+        },
+        {
+          "title": "Separation of File Serialization and Program Logic",
+          "items": [
+            "Keep file I/O separate from program logic. Reading and writing should be handled by small, dedicated functions whose only job is to move data to and from disk."
+          ]
+        },
+        {
+          "title": "Atomic Writes",
+          "items": [
+            "Always perform file writes atomically; See the \"Atomic Writes\" section of the Cookbook for possible implementation details."
+          ]
+        },
+        {
+          "title": "Singleton Files",
+          "items": [
+            "When there is only one canonical file of a kind — such as a single configuration or registry file — its read and write functions should be global and take no path arguments.",
+            "The file path is effectively constant within the program’s universe, so passing it around only adds noise."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "X",
+      "title": "DOCUMENTATION PRACTICES",
+      "date": "2025-11-18",
+      "sections": [
+        {
+          "title": "Docstrings",
+          "rules": [
+            "Do not document short functions (1-2 lines long) that are easily understandable at a glance.",
+            "Always document longer functions.",
+            "Do not fear docstrings becoming stale: Docstrings can now be trivially generated by AI.",
+            "If in doubt, error on the side of verbosity."
+          ],
+          "docstring_should_explain": [
+            "What the function does.",
+            "When or why it may be called (if not obvious).",
+            "What commands or events it handles.",
+            "What program state it modifies.",
+            "The shape of the data it touches, if it isn't documented elsewhere."
+          ],
+          "example": {
+            "status": "PENDING",
+            "label": "[EXAMPLE PENDING]"
+          }
+        }
+      ]
+    }
+  ]
+}
