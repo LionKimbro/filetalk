@@ -119,6 +119,18 @@
         "link": {
           "role": "indirect-mutation",
           "description": "Request creation of a routing connection.",
+          "cli-arguments": {
+            "required": [
+              {"flag": "--sf", "description": "source-folder path"},
+              {"flag": "--sc", "description": "source-channel name"},
+              {"flag": "--df", "description": "destination-folder path"},
+              {"flag": "--dc", "description": "destination-channel name"}
+            ],
+            "optional": [
+              {"flag": "--ack", "description": "acknowledgement file path"}
+            ],
+            "example": "patchboard link --sf /path/to/OUTBOX --sc data --df /path/to/INBOX --dc received"
+          },
           "behavior": [
             "Construct a Patchboard input message",
             "Write message to router INBOX"
@@ -142,6 +154,18 @@
         "unlink": {
           "role": "indirect-mutation",
           "description": "Request removal of a routing connection.",
+          "cli-arguments": {
+            "required": [
+              {"flag": "--sf", "description": "source-folder path"},
+              {"flag": "--sc", "description": "source-channel name"},
+              {"flag": "--df", "description": "destination-folder path"},
+              {"flag": "--dc", "description": "destination-channel name"}
+            ],
+            "optional": [
+              {"flag": "--ack", "description": "acknowledgement file path"}
+            ],
+            "example": "patchboard unlink --sf /path/to/OUTBOX --sc data --df /path/to/INBOX --dc received"
+          },
           "behavior": [
             "Construct a Patchboard input message",
             "Write message to router INBOX"
