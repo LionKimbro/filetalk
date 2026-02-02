@@ -17,7 +17,6 @@ dependencies = [
 ]
 
 [project.scripts]
-runner = "runner:main"
 patchboard = "patchboard_router.router:main"
 
 [tool.setuptools]
