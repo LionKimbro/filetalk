@@ -1,0 +1,95 @@
+{
+  "document": {
+    "document_id": "intraflow.functional_areas_evaluation.v2",
+    "title": "IntraFlow Functional Areas Evaluation",
+    "purpose": "Assess major functional areas from design spec and indicate implementation completeness and quality using GREEN/YELLOW/RED status.",
+    "date": "2026-02-16"
+  },
+
+  "last-evaluated": "<put yyyy-mm-dd here>",
+
+  "instructions for evaluator": [
+    "Update last-evaluated to the current date.",
+    "Evaluate each item, as if it had never been evaluated before.",
+    "Replace the 'status' with either RED (substantially missing), GREEN (fully functional), or YELLOW (partially implemented).",
+    "Replace the 'findings' section with whatever you would note about the system state."
+  ],
+
+  "evaluation": {
+
+    "connectable": {
+      "status": "???",
+      "evaluate": [
+        "Can the programmer create routes incrementally -- from a source, a destination, and two channels?",
+        "Do all functions require 2 or fewer arguments?  (flags argument does not count against.)",
+        "Is there API documentation for all of this?"
+      ],
+      "findings": []
+    },
+
+    "connection types": {
+      "status": "???",
+      "evaluate": [
+        "Can you interact with components, both as src and dest?",
+        "Can you interact with lists, both as src and dest?",
+        "Can you interact with queues, both as src and dest?",
+        "Can you interact with folders on the filesystem, per filetalk system, both as src and dest?"
+      ],
+      "findings": []
+    },
+
+    "functional": {
+      "status": "???",
+      "evaluate": [
+        "Can you actually successfully send messages through filetalk, in a variety of circumstances?"
+      ],
+      "findings": []
+    },
+
+    "testable": {
+      "status": "???",
+      "evaluate": [
+        "Can the system be reset at run-time, to a zero state, ready for repopulation?"
+      ],
+      "findings": []
+    },
+
+    "persistence": {
+      "status": "???",
+      "evaluate": [
+        "Is the system persistable?  Can the state of routes be saved to disk safely, and then restored?",
+        "Is the 'persistence' flagging system in the route dictionaries being respected?"
+      ],
+      "notes": ["Routes labelled non-persistent must not be persisted, or even attempted to persist."],
+      "findings": []
+    },
+
+    "running flexibility": {
+      "status": "???",
+      "evaluate": [
+        "Can the programmer run one iteration of the system?",
+        "Can the programmer run multiple iterations of the system?",
+        "Can the programmer let the system run until a global quit flag, or perhaps a Ctrl-Break is issued?",
+        "Is it documented anywhere, how to do all this?  Doesn't necessarily have to be in the package, though, preferably so."
+      ],
+      "findings": []
+    }
+    
+    "topology_management_quiescence_rules": {
+      "status": "???",
+      "evaluate": [
+        "Are upgrades to the topology respecting quiescence rules?"
+      ],
+      "findings": []
+    },
+
+    "filetalk_alignment_and_transport_abstraction": {
+      "status": "???",
+      "evaluate": [
+        "Does the system support filetalk input and output yet?",
+        "Does it work?  (Are there tests for it?)"
+      ],
+      "findings": []
+    }
+  }
+}

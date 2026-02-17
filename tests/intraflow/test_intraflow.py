@@ -28,6 +28,10 @@ def reset_runtime():
     ifl.routes.clear()
     ifl.g["component"] = None
     ifl.g["msg"] = None
+    ifl.wire["src"] = None
+    ifl.wire["dest"] = None
+    ifl.wire["persist"] = False
+    ifl.wire["channel-links"] = []
     yield
     ifl.components.clear()
     ifl.routes.clear()
@@ -86,41 +90,54 @@ def test_unregister_nonexistent_component_is_safe():
 
 
 # =============================================================================
-# ENDPOINT RESOLUTION
+# NORMALIZE ENDPOINT SPEC
 # =============================================================================
 
-def test_resolve_endpoint_with_ref():
-    obj = {"type": "INTRAFLOW-COMPONENT", "some": "data"}
-    ep = {"ref": obj}
-    assert ifl.resolve_endpoint(ep) is obj
+def test_normalize_component_tuple():
+    result = ifl.normalize_endpoint_spec(("component", "foo"))
+    assert result == {"type": "component", "id": "foo"}
 
 
-def test_resolve_endpoint_component_by_id():
-    comp = ifl.register_component("resolver_test", lambda: None)
-    ep = {"type": "component", "id": "resolver_test"}
-    assert ifl.resolve_endpoint(ep) is comp
+def test_normalize_filetalk_tuple():
+    result = ifl.normalize_endpoint_spec(("filetalk", "/tmp/inbox"))
+    assert result == {"type": "filetalk", "path": "/tmp/inbox"}
 
 
-def test_resolve_endpoint_component_missing_returns_none():
-    ep = {"type": "component", "id": "nonexistent"}
-    assert ifl.resolve_endpoint(ep) is None
-
-
-def test_resolve_endpoint_queue_with_ref():
-    q = []
-    ep = {"type": "queue", "ref": q}
-    assert ifl.resolve_endpoint(ep) is q
-
-
-def test_resolve_endpoint_list_with_ref():
+def test_normalize_list_tuple():
     lst = []
-    ep = {"type": "list", "ref": lst}
-    assert ifl.resolve_endpoint(ep) is lst
+    result = ifl.normalize_endpoint_spec(("list", lst))
+    assert result == {"type": "list", "ref": lst}
+    assert result["ref"] is lst
 
 
-def test_resolve_endpoint_unknown_type_returns_none():
-    ep = {"type": "unknown_thing"}
-    assert ifl.resolve_endpoint(ep) is None
+def test_normalize_queue_tuple():
+    q = []
+    result = ifl.normalize_endpoint_spec(("queue", q))
+    assert result == {"type": "queue", "ref": q}
+    assert result["ref"] is q
+
+
+def test_normalize_canonical_dict_passthrough():
+    ep = {"type": "component", "id": "bar"}
+    result = ifl.normalize_endpoint_spec(ep)
+    assert result is ep
+
+
+def test_normalize_bare_component_dict():
+    comp = ifl.make_component("x", lambda: None)
+    result = ifl.normalize_endpoint_spec(comp)
+    assert result["type"] == "component"
+    assert result["ref"] is comp
+
+
+def test_normalize_unknown_tuple_raises():
+    with pytest.raises(ValueError, match="Unknown endpoint tuple type"):
+        ifl.normalize_endpoint_spec(("bogus", "value"))
+
+
+def test_normalize_unsupported_type_raises():
+    with pytest.raises(ValueError, match="Unsupported endpoint spec"):
+        ifl.normalize_endpoint_spec(42)
 
 
 # =============================================================================
@@ -128,32 +145,84 @@ def test_resolve_endpoint_unknown_type_returns_none():
 # =============================================================================
 
 def test_add_route_appends():
-    src = {"type": "component", "id": "a"}
-    dest = {"type": "component", "id": "b"}
-    ifl.add_route(src, "out", dest, "in")
+    ifl.register_component("a", lambda: None)
+    ifl.register_component("b", lambda: None)
+    ifl.add_route({
+        "src": ("component", "a"), "src-channel": "out",
+        "dest": ("component", "b"), "dest-channel": "in",
+    })
     assert len(ifl.routes) == 1
-    assert ifl.routes[0]["src"] is src
+    assert ifl.routes[0]["src"]["type"] == "component"
+    assert ifl.routes[0]["src"]["id"] == "a"
     assert ifl.routes[0]["src-channel"] == "out"
-    assert ifl.routes[0]["dest"] is dest
+    assert ifl.routes[0]["dest"]["id"] == "b"
     assert ifl.routes[0]["dest-channel"] == "in"
+    assert ifl.routes[0]["persistent"] is False
+
+
+def test_add_route_resolves_refs():
+    comp = ifl.register_component("x", lambda: None)
+    ifl.add_route({
+        "src": ("component", "x"), "src-channel": "out",
+        "dest": ("component", "x"), "dest-channel": "in",
+    })
+    assert ifl.routes[0]["src"]["ref"] is comp
+    assert ifl.routes[0]["dest"]["ref"] is comp
+
+
+def test_add_route_unresolvable_raises():
+    with pytest.raises(ValueError, match="Cannot resolve"):
+        ifl.add_route({
+            "src": ("component", "ghost"), "src-channel": "out",
+            "dest": ("component", "ghost"), "dest-channel": "in",
+        })
+
+
+def test_add_route_persistent_validation():
+    ifl.register_component("a", lambda: None)
+    output = []
+    with pytest.raises(ValueError, match="not persistable"):
+        ifl.add_route({
+            "src": ("component", "a"), "src-channel": "out",
+            "dest": ("list", output), "dest-channel": "in",
+            "persistent": True,
+        })
+
+
+def test_add_route_persistent_allowed():
+    ifl.register_component("a", lambda: None)
+    ifl.register_component("b", lambda: None)
+    ifl.add_route({
+        "src": ("component", "a"), "src-channel": "out",
+        "dest": ("component", "b"), "dest-channel": "in",
+        "persistent": True,
+    })
+    assert ifl.routes[0]["persistent"] is True
 
 
 def test_clear_routes():
-    ifl.add_route({"type": "component", "id": "a"}, "x",
-                   {"type": "component", "id": "b"}, "y")
-    ifl.add_route({"type": "component", "id": "c"}, "x",
-                   {"type": "component", "id": "d"}, "y")
-    assert len(ifl.routes) == 2
+    ifl.register_component("a", lambda: None)
+    ifl.register_component("b", lambda: None)
+    ifl.add_route({
+        "src": ("component", "a"), "src-channel": "x",
+        "dest": ("component", "b"), "dest-channel": "y",
+    })
+    assert len(ifl.routes) == 1
     ifl.clear_routes()
     assert len(ifl.routes) == 0
 
 
 def test_remove_route():
-    src = {"type": "component", "id": "a"}
-    dest = {"type": "component", "id": "b"}
-    ifl.add_route(src, "out", dest, "in")
+    ifl.register_component("a", lambda: None)
+    ifl.register_component("b", lambda: None)
+    ifl.add_route({
+        "src": ("component", "a"), "src-channel": "out",
+        "dest": ("component", "b"), "dest-channel": "in",
+    })
     assert len(ifl.routes) == 1
-    result = ifl.remove_route(src, "out", dest, "in")
+    src_ep = ifl.routes[0]["src"]
+    dest_ep = ifl.routes[0]["dest"]
+    result = ifl.remove_route(src_ep, "out", dest_ep, "in")
     assert result is True
     assert len(ifl.routes) == 0
 
@@ -186,15 +255,20 @@ def test_emit_signal_appends_to_outbox():
 # ROUTING — route_everything()
 # =============================================================================
 
+def _add_route(src, src_channel, dest, dest_channel):
+    """Test helper: build a route dict and call add_route."""
+    ifl.add_route({
+        "src": src, "src-channel": src_channel,
+        "dest": dest, "dest-channel": dest_channel,
+    })
+
+
 def test_route_everything_basic_delivery():
     """Message in src outbox is delivered to dest inbox with channel rewrite."""
     src = ifl.register_component("src", lambda: None)
     dest = ifl.register_component("dest", lambda: None)
 
-    ifl.add_route(
-        {"type": "component", "id": "src"}, "out",
-        {"type": "component", "id": "dest"}, "in",
-    )
+    _add_route(("component", "src"), "out", ("component", "dest"), "in")
 
     src["outbox"].append(ifl.make_message("out", {"x": 1}))
     ifl.route_everything()
@@ -211,10 +285,7 @@ def test_route_everything_preserves_timestamp():
     src = ifl.register_component("src", lambda: None)
     dest = ifl.register_component("dest", lambda: None)
 
-    ifl.add_route(
-        {"type": "component", "id": "src"}, "out",
-        {"type": "component", "id": "dest"}, "in",
-    )
+    _add_route(("component", "src"), "out", ("component", "dest"), "in")
 
     original_msg = ifl.make_message("out", {})
     original_ts = original_msg["timestamp"]
@@ -227,19 +298,16 @@ def test_route_everything_preserves_timestamp():
 def test_route_everything_no_match_consumes_message():
     """Messages with no matching channel are still consumed from outbox."""
     src = ifl.register_component("src", lambda: None)
-    dest = ifl.register_component("dest", lambda: None)
+    ifl.register_component("dest", lambda: None)
 
-    ifl.add_route(
-        {"type": "component", "id": "src"}, "out",
-        {"type": "component", "id": "dest"}, "in",
-    )
+    _add_route(("component", "src"), "out", ("component", "dest"), "in")
 
     # Message on wrong channel
     src["outbox"].append(ifl.make_message("wrong_channel", {}))
     ifl.route_everything()
 
     assert len(src["outbox"]) == 0
-    assert len(dest["inbox"]) == 0
+    assert len(ifl.components["dest"]["inbox"]) == 0
 
 
 def test_route_everything_fanout():
@@ -248,14 +316,8 @@ def test_route_everything_fanout():
     d1 = ifl.register_component("d1", lambda: None)
     d2 = ifl.register_component("d2", lambda: None)
 
-    ifl.add_route(
-        {"type": "component", "id": "src"}, "out",
-        {"type": "component", "id": "d1"}, "in_a",
-    )
-    ifl.add_route(
-        {"type": "component", "id": "src"}, "out",
-        {"type": "component", "id": "d2"}, "in_b",
-    )
+    _add_route(("component", "src"), "out", ("component", "d1"), "in_a")
+    _add_route(("component", "src"), "out", ("component", "d2"), "in_b")
 
     src["outbox"].append(ifl.make_message("out", {"fanout": True}))
     ifl.route_everything()
@@ -273,10 +335,7 @@ def test_route_everything_multiple_messages_fifo():
     src = ifl.register_component("src", lambda: None)
     dest = ifl.register_component("dest", lambda: None)
 
-    ifl.add_route(
-        {"type": "component", "id": "src"}, "out",
-        {"type": "component", "id": "dest"}, "in",
-    )
+    _add_route(("component", "src"), "out", ("component", "dest"), "in")
 
     src["outbox"].append(ifl.make_message("out", {"seq": 1}))
     src["outbox"].append(ifl.make_message("out", {"seq": 2}))
@@ -289,37 +348,26 @@ def test_route_everything_multiple_messages_fifo():
     assert dest["inbox"][2]["signal"]["seq"] == 3
 
 
-def test_route_everything_unresolvable_route_skipped():
-    """Routes with unresolvable endpoints are inactive — source untouched."""
+def test_route_everything_unresolvable_rejected_at_add():
+    """Routes with unresolvable endpoints are rejected at add_route time."""
+    ifl.register_component("src", lambda: None)
+    with pytest.raises(ValueError, match="Cannot resolve"):
+        _add_route(("component", "src"), "out", ("component", "ghost"), "in")
+
+
+def test_route_everything_with_list_dest():
+    """List endpoint receives routed messages."""
     src = ifl.register_component("src", lambda: None)
-    src["outbox"].append(ifl.make_message("out", {}))
+    output_list = []
 
-    ifl.add_route(
-        {"type": "component", "id": "src"}, "out",
-        {"type": "component", "id": "ghost"}, "in",
-    )
-
-    ifl.route_everything()
-    # Route is inactive (dest unresolvable), so source outbox is not drained
-    assert len(src["outbox"]) == 1
-
-
-def test_route_everything_with_queue_endpoint():
-    """Queue endpoint receives routed messages."""
-    src = ifl.register_component("src", lambda: None)
-    output_queue = []
-
-    ifl.add_route(
-        {"type": "component", "id": "src"}, "out",
-        {"type": "queue", "ref": output_queue}, "result",
-    )
+    _add_route(("component", "src"), "out", ("list", output_list), "result")
 
     src["outbox"].append(ifl.make_message("out", {"val": 7}))
     ifl.route_everything()
 
-    assert len(output_queue) == 1
-    assert output_queue[0]["channel"] == "result"
-    assert output_queue[0]["signal"] == {"val": 7}
+    assert len(output_list) == 1
+    assert output_list[0]["channel"] == "result"
+    assert output_list[0]["signal"] == {"val": 7}
 
 
 def test_route_everything_with_list_source():
@@ -327,12 +375,7 @@ def test_route_everything_with_list_source():
     source_list = [ifl.make_message("data", {"from": "list"})]
     dest = ifl.register_component("dest", lambda: None)
 
-    # Use ref-based endpoint for the list
-    list_ep = {"type": "list", "ref": source_list}
-    ifl.add_route(
-        list_ep, "data",
-        {"type": "component", "id": "dest"}, "in",
-    )
+    _add_route(("list", source_list), "data", ("component", "dest"), "in")
 
     ifl.route_everything()
 
@@ -467,10 +510,7 @@ def test_run_cycle_routes_then_activates():
     src = ifl.register_component("src", lambda: None)
     ifl.register_component("dest", consumer_act)
 
-    ifl.add_route(
-        {"type": "component", "id": "src"}, "out",
-        {"type": "component", "id": "dest"}, "in",
-    )
+    _add_route(("component", "src"), "out", ("component", "dest"), "in")
 
     # Put message in src outbox — Phase 1 routes it, Phase 2 activates dest
     src["outbox"].append(ifl.make_message("out", {"hello": True}))
@@ -490,10 +530,7 @@ def test_run_fixed_cycles():
         ifl.emit_signal("out", {})
 
     comp = ifl.register_component("looper", act)
-    ifl.add_route(
-        {"type": "component", "id": "looper"}, "out",
-        {"type": "component", "id": "looper"}, "in",
-    )
+    _add_route(("component", "looper"), "out", ("component", "looper"), "in")
 
     comp["inbox"].append(ifl.make_message("in", {}))
     ifl.run(5)
@@ -511,10 +548,7 @@ def test_run_until_quiescent():
             ifl.emit_signal("out", {"remaining": counter["n"]})
 
     comp = ifl.register_component("countdown", countdown_act)
-    ifl.add_route(
-        {"type": "component", "id": "countdown"}, "out",
-        {"type": "component", "id": "countdown"}, "in",
-    )
+    _add_route(("component", "countdown"), "out", ("component", "countdown"), "in")
 
     comp["inbox"].append(ifl.make_message("in", {"start": True}))
     ifl.run()
@@ -538,10 +572,7 @@ def test_producer_consumer_pipeline():
     producer = ifl.register_component("producer", producer_act)
     ifl.register_component("consumer", consumer_act)
 
-    ifl.add_route(
-        {"type": "component", "id": "producer"}, "out",
-        {"type": "component", "id": "consumer"}, "in",
-    )
+    _add_route(("component", "producer"), "out", ("component", "consumer"), "in")
 
     producer["inbox"].append(ifl.make_message("kick", {}))
     ifl.run()
@@ -564,21 +595,12 @@ def test_three_stage_pipeline():
     ifl.register_component("b", stage_act)
     ifl.register_component("c", stage_act)
 
-    ifl.add_route(
-        {"type": "component", "id": "a"}, "out",
-        {"type": "component", "id": "b"}, "in",
-    )
-    ifl.add_route(
-        {"type": "component", "id": "b"}, "out",
-        {"type": "component", "id": "c"}, "in",
-    )
+    _add_route(("component", "a"), "out", ("component", "b"), "in")
+    _add_route(("component", "b"), "out", ("component", "c"), "in")
 
     # Collect c's output in a list endpoint
     output = []
-    ifl.add_route(
-        {"type": "component", "id": "c"}, "out",
-        {"type": "list", "ref": output}, "final",
-    )
+    _add_route(("component", "c"), "out", ("list", output), "final")
 
     ifl.components["a"]["inbox"].append(ifl.make_message("in", {"origin": "test"}))
     ifl.run()
@@ -601,14 +623,8 @@ def test_fanout_and_collect():
     ifl.register_component("d1", make_collector("d1"))
     ifl.register_component("d2", make_collector("d2"))
 
-    ifl.add_route(
-        {"type": "component", "id": "src"}, "broadcast",
-        {"type": "component", "id": "d1"}, "in",
-    )
-    ifl.add_route(
-        {"type": "component", "id": "src"}, "broadcast",
-        {"type": "component", "id": "d2"}, "in",
-    )
+    _add_route(("component", "src"), "broadcast", ("component", "d1"), "in")
+    _add_route(("component", "src"), "broadcast", ("component", "d2"), "in")
 
     src["outbox"].append(ifl.make_message("broadcast", {"data": 42}))
     ifl.run()
@@ -626,10 +642,7 @@ def test_component_state_persists_across_cycles():
             ifl.emit_signal("out", {})
 
     comp = ifl.register_component("counter", counter_act)
-    ifl.add_route(
-        {"type": "component", "id": "counter"}, "out",
-        {"type": "component", "id": "counter"}, "in",
-    )
+    _add_route(("component", "counter"), "out", ("component", "counter"), "in")
 
     comp["inbox"].append(ifl.make_message("in", {}))
     ifl.run()
@@ -638,9 +651,9 @@ def test_component_state_persists_across_cycles():
     assert ifl.is_quiescent()
 
 
-def test_queue_to_component_routing():
-    """External queue used as a source, component as destination."""
-    input_queue = [
+def test_list_to_component_routing():
+    """External list used as a source, component as destination."""
+    input_list = [
         ifl.make_message("cmd", {"action": "start"}),
         ifl.make_message("cmd", {"action": "stop"}),
     ]
@@ -652,13 +665,129 @@ def test_queue_to_component_routing():
 
     ifl.register_component("handler", act)
 
-    ifl.add_route(
-        {"type": "queue", "ref": input_queue}, "cmd",
-        {"type": "component", "id": "handler"}, "command",
-    )
+    _add_route(("list", input_list), "cmd", ("component", "handler"), "command")
 
-    # Phase 1 drains the queue, Phase 2 activates handler (one msg per cycle)
+    # Phase 1 drains the list, Phase 2 activates handler (one msg per cycle)
     ifl.run()
 
     assert log == ["start", "stop"]
-    assert len(input_queue) == 0
+    assert len(input_list) == 0
+
+
+# =============================================================================
+# WIRING CONSOLE
+# =============================================================================
+
+def test_wiring_console_basic():
+    """Wiring console creates routes via address + link + commit."""
+    ifl.register_component("p", lambda: None)
+    ifl.register_component("q", lambda: None)
+
+    ifl.address_components(("component", "p"), ("component", "q"))
+    ifl.link_channels("out", "in")
+    ifl.commit_links()
+
+    assert len(ifl.routes) == 1
+    assert ifl.routes[0]["src-channel"] == "out"
+    assert ifl.routes[0]["dest-channel"] == "in"
+
+
+def test_wiring_console_multiple_channels():
+    """Multiple link_channels calls stage multiple mappings committed together."""
+    ifl.register_component("a", lambda: None)
+    ifl.register_component("b", lambda: None)
+
+    ifl.address_components(("component", "a"), ("component", "b"))
+    ifl.link_channels("data", "input")
+    ifl.link_channels("status", "control")
+    ifl.commit_links()
+
+    assert len(ifl.routes) == 2
+    assert ifl.routes[0]["src-channel"] == "data"
+    assert ifl.routes[1]["src-channel"] == "status"
+
+
+def test_wiring_console_persist():
+    """persist_links() marks committed routes as persistent."""
+    ifl.register_component("a", lambda: None)
+    ifl.register_component("b", lambda: None)
+
+    ifl.address_components(("component", "a"), ("component", "b"))
+    ifl.persist_links()
+    ifl.link_channels("out", "in")
+    ifl.commit_links()
+
+    assert ifl.routes[0]["persistent"] is True
+
+
+def test_wiring_console_commit_clears_links():
+    """After commit_links(), channel-links and persist are reset."""
+    ifl.register_component("a", lambda: None)
+    ifl.register_component("b", lambda: None)
+
+    ifl.address_components(("component", "a"), ("component", "b"))
+    ifl.persist_links()
+    ifl.link_channels("out", "in")
+    ifl.commit_links()
+
+    assert ifl.wire["channel-links"] == []
+    assert ifl.wire["persist"] is False
+    # src and dest remain latched
+    assert ifl.wire["src"] is not None
+    assert ifl.wire["dest"] is not None
+
+
+def test_wiring_console_preserves_addressing():
+    """After commit, src/dest remain for further link_channels + commit cycles."""
+    ifl.register_component("a", lambda: None)
+    ifl.register_component("b", lambda: None)
+
+    ifl.address_components(("component", "a"), ("component", "b"))
+    ifl.link_channels("x", "y")
+    ifl.commit_links()
+
+    # Second commit using same addressing
+    ifl.link_channels("p", "q")
+    ifl.commit_links()
+
+    assert len(ifl.routes) == 2
+
+
+def test_wiring_console_link_without_src_raises():
+    with pytest.raises(ValueError, match="No source"):
+        ifl.link_channels("out", "in")
+
+
+def test_wiring_console_link_without_dest_raises():
+    ifl.address_source(("component", "a"))
+    with pytest.raises(ValueError, match="No destination"):
+        ifl.link_channels("out", "in")
+
+
+def test_wiring_console_commit_empty_raises():
+    ifl.register_component("a", lambda: None)
+    ifl.register_component("b", lambda: None)
+    ifl.address_components(("component", "a"), ("component", "b"))
+    with pytest.raises(ValueError, match="No channel links"):
+        ifl.commit_links()
+
+
+def test_wiring_console_end_to_end():
+    """Full wiring console flow: wire, commit, seed, run, verify."""
+    def producer_act():
+        ifl.emit_signal("out", {"msg": "wired"})
+
+    def consumer_act():
+        ifl.g["component"]["state"]["got"] = ifl.g["msg"]["signal"]
+
+    producer = ifl.register_component("producer", producer_act)
+    ifl.register_component("consumer", consumer_act)
+
+    ifl.address_components(("component", "producer"), ("component", "consumer"))
+    ifl.link_channels("out", "in")
+    ifl.commit_links()
+
+    producer["inbox"].append(ifl.make_message("kick", {}))
+    ifl.run()
+
+    assert ifl.components["consumer"]["state"]["got"] == {"msg": "wired"}

@@ -86,48 +86,105 @@ def unregister_component(component_id):
 
 
 # =============================================================================
-# ENDPOINT MODEL & RESOLUTION
+# NORMALIZE ENDPOINT SPEC
 # =============================================================================
 
-def resolve_endpoint(endpoint):
-    """Resolve an endpoint spec to a runtime object.
+endpoint_spec_types = {"component", "filetalk", "queue", "list"}
 
-    Endpoint types:
-      - Has "ref" key: return the ref directly (runtime-only endpoint).
-      - {type: "component", id: X}: lookup in components registry.
-      - {type: "queue" or "list", ref: obj}: return the ref object.
-      - Unresolvable: return None.
+
+def normalize_endpoint_spec(x):
+    """Convert user-provided endpoint identifier into canonical endpoint spec.
+
+    Accepts:
+      - ("component", id_string)   -> {"type": "component", "id": id_string}
+      - ("filetalk", path_string)  -> {"type": "filetalk", "path": path_string}
+      - ("list", list_object)      -> {"type": "list", "ref": list_object}
+      - ("queue", queue_object)    -> {"type": "queue", "ref": queue_object}
+      - A dict with "type" key     -> validated and returned (idempotent)
+      - A dict without "type" (runtime component dict) -> {"type": "component", "ref": dict}
+
+    Idempotent: canonical dicts pass through unchanged.
     """
-    if "ref" in endpoint:
-        return endpoint["ref"]
+    # Tuple form: (type_tag, value)
+    if isinstance(x, (tuple, list)) and len(x) == 2:
+        tag, value = x
+        if tag == "component":
+            return {"type": "component", "id": value}
+        if tag == "filetalk":
+            return {"type": "filetalk", "path": value}
+        if tag == "list":
+            return {"type": "list", "ref": value}
+        if tag == "queue":
+            return {"type": "queue", "ref": value}
+        raise ValueError(f"Unknown endpoint tuple type: {tag!r}")
 
-    ep_type = endpoint.get("type")
+    # Dict form
+    if isinstance(x, dict):
+        ep_type = x.get("type")
+        if ep_type in endpoint_spec_types:
+            # Already canonical endpoint spec — return as-is
+            return x
+        # Bare component dict (runtime reference)
+        return {"type": "component", "ref": x}
 
-    if ep_type == "component":
-        return components.get(endpoint.get("id"))
-
-    if ep_type in ("queue", "list"):
-        return endpoint.get("ref")
-
-    return None
+    raise ValueError(f"Unsupported endpoint spec: {type(x).__name__}")
 
 
 # =============================================================================
 # ENDPOINT BEHAVIOR TABLE
 # =============================================================================
 
+def _component_drain(ep):
+    msgs = list(ep["ref"]["outbox"])
+    ep["ref"]["outbox"].clear()
+    return msgs
+
+def _component_deliver(ep, msg):
+    ep["ref"]["inbox"].append(msg)
+
+def _component_resolve_ref(ep):
+    return components.get(ep.get("id"))
+
+def _list_drain(ep):
+    msgs = list(ep["ref"])
+    ep["ref"].clear()
+    return msgs
+
+def _queue_drain(ep):
+    msgs = []
+    q = ep["ref"]
+    while not q.empty():
+        msgs.append(q.get_nowait())
+    return msgs
+
 endpoint_behavior = {
-    "INTRAFLOW-COMPONENT": {
-        "get_outbox": lambda ep: ep["outbox"],
-        "deliver": lambda ep, msg: ep["inbox"].append(msg),
+    "component": {
+        "requires_ref": True,
+        "resolve_ref": _component_resolve_ref,
+        "is_persistable": lambda ep: "id" in ep,
+        "drain_messages": _component_drain,
+        "deliver": _component_deliver,
+    },
+    "filetalk": {
+        "requires_ref": False,
+        "resolve_ref": lambda ep: None,
+        "is_persistable": lambda ep: "path" in ep,
+        "drain_messages": lambda ep: [],   # placeholder — filesystem transport TBD
+        "deliver": lambda ep, msg: None,   # placeholder — filesystem transport TBD
     },
     "queue": {
-        "get_outbox": lambda ep: ep,
-        "deliver": lambda ep, msg: ep.append(msg),
+        "requires_ref": True,
+        "resolve_ref": lambda ep: ep.get("ref"),
+        "is_persistable": lambda ep: False,
+        "drain_messages": _queue_drain,
+        "deliver": lambda ep, msg: ep["ref"].put(msg),
     },
     "list": {
-        "get_outbox": lambda ep: ep,
-        "deliver": lambda ep, msg: ep.append(msg),
+        "requires_ref": True,
+        "resolve_ref": lambda ep: ep.get("ref"),
+        "is_persistable": lambda ep: False,
+        "drain_messages": _list_drain,
+        "deliver": lambda ep, msg: ep["ref"].append(msg),
     },
 }
 
@@ -136,19 +193,82 @@ endpoint_behavior = {
 # ROUTE MANAGEMENT
 # =============================================================================
 
-def add_route(src, src_channel, dest, dest_channel):
-    """Append a route dict to the routing table.
+def _find_existing_endpoint(ep):
+    """Find an existing bound endpoint spec in routes matching the same logical endpoint.
 
-    Each argument is an endpoint spec (dict with type/id/ref) or a channel
-    name string. Routes should only be added at quiescence.
+    Routes sharing the same logical source must share the same endpoint spec
+    object so that route_everything() can group them by identity.
     """
-    route = {
-        "src": src,
-        "src-channel": src_channel,
-        "dest": dest,
-        "dest-channel": dest_channel,
+    for route in routes:
+        for existing in (route["src"], route["dest"]):
+            if existing["type"] != ep["type"]:
+                continue
+            if "id" in ep and existing.get("id") == ep["id"]:
+                return existing
+            if "path" in ep and existing.get("path") == ep["path"]:
+                return existing
+            if "ref" in ep and existing.get("ref") is ep["ref"]:
+                return existing
+    return None
+
+
+def add_route(route):
+    """Bind a declarative route into executable topology.
+
+    Accepts a route dict with keys: src, src-channel, dest, dest-channel,
+    and optional persistent (default False).
+
+    Steps:
+      1. Normalize src and dest endpoint specifications.
+      2. Lookup endpoint behavior contracts for both endpoints.
+      3. Resolve runtime refs if endpoint type requires binding.
+      4. Validate persistence eligibility.
+      5. Append fully-bound route object to routing table.
+    """
+    src_ep = normalize_endpoint_spec(route["src"])
+    dest_ep = normalize_endpoint_spec(route["dest"])
+    persistent = route.get("persistent", False)
+
+    # Reuse existing endpoint specs for identity-based grouping in routing
+    src_ep = _find_existing_endpoint(src_ep) or src_ep
+    dest_ep = _find_existing_endpoint(dest_ep) or dest_ep
+
+    # Lookup behavior contracts
+    src_beh = endpoint_behavior.get(src_ep["type"])
+    dest_beh = endpoint_behavior.get(dest_ep["type"])
+    if src_beh is None:
+        raise ValueError(f"Unknown endpoint type: {src_ep['type']!r}")
+    if dest_beh is None:
+        raise ValueError(f"Unknown endpoint type: {dest_ep['type']!r}")
+
+    # Resolve runtime refs if required
+    if src_beh["requires_ref"] and "ref" not in src_ep:
+        ref = src_beh["resolve_ref"](src_ep)
+        if ref is None:
+            raise ValueError(f"Cannot resolve source endpoint: {src_ep}")
+        src_ep["ref"] = ref
+
+    if dest_beh["requires_ref"] and "ref" not in dest_ep:
+        ref = dest_beh["resolve_ref"](dest_ep)
+        if ref is None:
+            raise ValueError(f"Cannot resolve destination endpoint: {dest_ep}")
+        dest_ep["ref"] = ref
+
+    # Validate persistence
+    if persistent:
+        if not src_beh["is_persistable"](src_ep):
+            raise ValueError(f"Source endpoint not persistable: {src_ep}")
+        if not dest_beh["is_persistable"](dest_ep):
+            raise ValueError(f"Destination endpoint not persistable: {dest_ep}")
+
+    bound_route = {
+        "src": src_ep,
+        "src-channel": route["src-channel"],
+        "dest": dest_ep,
+        "dest-channel": route["dest-channel"],
+        "persistent": persistent,
     }
-    routes.append(route)
+    routes.append(bound_route)
 
 
 def remove_route(src, src_channel, dest, dest_channel):
@@ -168,89 +288,127 @@ def clear_routes():
 
 
 # =============================================================================
+# PATCHBOARD WIRING CONSOLE
+# =============================================================================
+
+wire = {
+    "src": None,
+    "dest": None,
+    "persist": False,
+    "channel-links": [],
+}
+
+
+def address_source(x):
+    """Assign source endpoint spec and reset provisional wiring state."""
+    wire["src"] = normalize_endpoint_spec(x)
+    wire["persist"] = False
+    wire["channel-links"] = []
+
+
+def address_dest(x):
+    """Assign destination endpoint spec."""
+    wire["dest"] = normalize_endpoint_spec(x)
+
+
+def address_components(src, dest):
+    """Convenience: address_source(src) then address_dest(dest)."""
+    address_source(src)
+    address_dest(dest)
+
+
+def persist_links():
+    """Mark subsequent committed routes as persistent (subject to add_route validation)."""
+    wire["persist"] = True
+
+
+def link_channels(src_channel, dest_channel):
+    """Stage a channel mapping between current source and destination."""
+    if wire["src"] is None:
+        raise ValueError("No source endpoint addressed")
+    if wire["dest"] is None:
+        raise ValueError("No destination endpoint addressed")
+    wire["channel-links"].append((src_channel, dest_channel))
+
+
+def commit_links():
+    """Finalize all staged channel mappings by creating routes via add_route().
+
+    Clears channel-links and persist flag afterward.
+    Preserves current src and dest addressing context.
+    """
+    if wire["src"] is None:
+        raise ValueError("No source endpoint addressed")
+    if wire["dest"] is None:
+        raise ValueError("No destination endpoint addressed")
+    if not wire["channel-links"]:
+        raise ValueError("No channel links staged")
+
+    for (src_channel, dest_channel) in wire["channel-links"]:
+        route = {
+            "src": wire["src"],
+            "dest": wire["dest"],
+            "src-channel": src_channel,
+            "dest-channel": dest_channel,
+            "persistent": wire["persist"],
+        }
+        add_route(route)
+
+    wire["channel-links"] = []
+    wire["persist"] = False
+
+
+# =============================================================================
 # ROUTING ALGORITHM — RouteEverything (Phase 1)
 # =============================================================================
 
-def _endpoint_type(endpoint_spec):
-    """Derive the behavior-table type key for a resolved endpoint.
-
-    Components are dicts with a "type" key ("INTRAFLOW-COMPONENT").
-    Queue and list endpoints resolve to plain Python lists; the type
-    comes from the endpoint spec that produced them.
-    """
-    if isinstance(endpoint_spec, dict):
-        ep_type = endpoint_spec.get("type")
-        if ep_type == "component":
-            return "INTRAFLOW-COMPONENT"
-        return ep_type  # "queue", "list", etc.
-    return None
-
-
 def route_everything():
-    """Consume messages from source outboxes and deliver to destination inboxes.
+    """Drain messages from source endpoints and deliver routed copies to destinations.
 
-    Follows the spec pseudocode exactly:
-      1. Resolve all routes to runtime endpoints.
-      2. Build route_index grouped by (src_id, src_channel).
-      3. Iterate sources in stable order, drain outbox messages.
-      4. For each message, fanout to matching destinations with channel rewrite.
-      5. Clear objid mapping.
+    Routes are pre-bound: endpoint specs already contain runtime refs from
+    add_route(). No resolution occurs here.
 
-    Routing is destructive: source outbox messages are consumed. Signal and
-    timestamp are preserved; only channel is rewritten per the route.
+    Steps:
+      1. Build route_index grouped by source endpoint identity and channel.
+      2. Iterate sources, drain all messages via drain_messages().
+      3. For each message, fanout to matching destinations with channel rewrite.
     """
     objid = {}
-    objtype = {}     # id(obj) -> behavior-table type key
     route_index = {}
 
+    # Compile routing index
     for route in routes:
-        src_obj = resolve_endpoint(route["src"])
-        dest_obj = resolve_endpoint(route["dest"])
+        src_ep = route["src"]
+        dest_ep = route["dest"]
 
-        if src_obj is None or dest_obj is None:
-            continue
+        src_id = id(src_ep)
 
-        src_id = id(src_obj)
-        dest_id = id(dest_obj)
-
-        objid[src_id] = src_obj
-        objid[dest_id] = dest_obj
-        objtype[src_id] = _endpoint_type(route["src"])
-        objtype[dest_id] = _endpoint_type(route["dest"])
+        objid[src_id] = src_ep
 
         route_index.setdefault(src_id, {})
         route_index[src_id].setdefault(route["src-channel"], [])
         route_index[src_id][route["src-channel"]].append(
-            (dest_id, route["dest-channel"])
+            (dest_ep, route["dest-channel"])
         )
 
+    # Execute routing
     for src_id, channel_map in route_index.items():
-        src_endpoint = objid[src_id]
-        src_beh = endpoint_behavior.get(objtype.get(src_id))
-        if src_beh is None:
-            continue
+        src_ep = objid[src_id]
+        src_beh = endpoint_behavior[src_ep["type"]]
+        msgs = src_beh["drain_messages"](src_ep)
 
-        outbox = src_beh["get_outbox"](src_endpoint)
-
-        while outbox:
-            msg = outbox.pop(0)
+        for msg in msgs:
             fanout = channel_map.get(msg["channel"], [])
-
-            for (dest_id, dest_channel) in fanout:
-                dest_endpoint = objid[dest_id]
-                dest_beh = endpoint_behavior.get(objtype.get(dest_id))
-                if dest_beh is None:
-                    continue
-
+            for (dest_ep, dest_channel) in fanout:
+                dest_beh = endpoint_behavior[dest_ep["type"]]
                 new_msg = {
                     "channel": dest_channel,
                     "signal": msg["signal"],
                     "timestamp": msg["timestamp"],
                 }
-                dest_beh["deliver"](dest_endpoint, new_msg)
+                dest_beh["deliver"](dest_ep, new_msg)
 
     objid.clear()
-    objtype.clear()
 
 
 # =============================================================================
@@ -329,13 +487,10 @@ if __name__ == "__main__":
     producer = register_component("producer", producer_activation)
     consumer = register_component("consumer", consumer_activation)
 
-    # Wire: producer "out" -> consumer "in"
-    add_route(
-        {"type": "component", "id": "producer"},
-        "out",
-        {"type": "component", "id": "consumer"},
-        "in",
-    )
+    # Wire: producer "out" -> consumer "in" using wiring console
+    address_components(("component", "producer"), ("component", "consumer"))
+    link_channels("out", "in")
+    commit_links()
 
     # Inject a seed message into producer's inbox to trigger it
     producer["inbox"].append(make_message("kick", {"reason": "seed"}))

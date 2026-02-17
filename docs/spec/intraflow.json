@@ -8,7 +8,10 @@
     "version": "0.5"
   },
   "development": {
-    "chatgpt": "https://chatgpt.com/c/69925529-9574-8326-991c-bd7f51b51039"
+    "chatgpt": {
+      "initial": "https://chatgpt.com/c/69925529-9574-8326-991c-bd7f51b51039",
+      "2026-02-16 check-up after initial": "https://chatgpt.com/c/6993d533-b158-8326-a2be-d0a6789b56b5"
+    }
   },
   "overview": {
     "summary": "A deterministic message-driven runtime composed of cooperative components connected through an external patchboard routing fabric. Components activate only when messages arrive in their inbox. Patchboard routes signals between channels by rewriting message envelopes while preserving signal payload and timestamp.",
@@ -109,18 +112,19 @@
     ]
   },
   "endpoint_model": {
-    "description": "Endpoints represent message containers or routing interfaces.",
+    "name": "endpoint_spec_schema",
+    "description": "Canonical structure for endpoint specifications used throughout routing, wiring, and execution.",
     "structure": {
-      "type": "endpoint implementation type",
-      "id": "symbolic identifier (for serializable endpoints)",
-      "ref": "runtime object reference (for non-serializable runtime endpoints)",
-      "path": "filesystem path (for filetalk endpoints)"
+      "type": "string identifying endpoint behavior type",
+      "id": "optional symbolic identifier for persistent or registry-based endpoints",
+      "path": "optional filesystem path (e.g., filetalk endpoints)",
+      "ref": "optional runtime reference to bound object"
     },
-    "endpoint_types": [
-      "component",
-      "filetalk",
-      "queue",
-      "list"
+    "principles": [
+      "Endpoint specification is the canonical representation of an endpoint.",
+      "Endpoint specs may exist in declarative or runtime-bound form.",
+      "Behavior and capabilities are defined by endpoint_behavior[type].",
+      "Some endpoint types require runtime binding (ref) prior to execution; this requirement is defined by endpoint_behavior[type]."
     ],
     "examples": [
       {
@@ -137,31 +141,247 @@
       }
     ]
   },
-  "endpoint_resolution": {
-    "description": "How endpoint specs become runtime endpoints.",
-    "rules": [
-      "If endpoint has 'ref', use it directly (runtime-only).",
-      "If endpoint is {type:'component', id:'X'}, resolve to components['X'].",
-      "If endpoint is {type:'filetalk', path:'P'}, resolve to a filesystem endpoint bound to folder P.",
-      "If resolution fails, the route is inactive until it can be resolved."
+  "endpoint_behaviors": {
+    "name": "endpoint_behaviors",
+    "description": "Defines runtime interaction functions and binding contracts for endpoint types used by routing.",
+    "purpose": [
+      "Abstract message container interaction without exposing internal storage.",
+      "Provide minimal functional interface required by routing algorithm.",
+      "Define endpoint binding and persistence eligibility rules.",
+      "Centralize endpoint-type-specific logic."
+    ],
+    "structure": {
+      "<endpoint_type>": {
+        "requires_ref": "boolean indicating whether this endpoint type requires add_route() to attach a runtime 'ref' before routing",
+        "resolve_ref": "function(endpoint_spec) -> runtime object used by add_route() during topology binding to populate endpoint['ref']; MUST NOT be called during routing execution.",
+        "is_persistable": "function(endpoint_spec) -> boolean used by add_route() to determine whether endpoint specification is eligible for persistence (e.g., contains serializable identifiers such as 'id' or 'path').",
+        "drain_messages": "function(endpoint_spec) -> list of messages (destructive drain)",
+        "deliver": "function(endpoint_spec, message) -> performs delivery into destination container"
+      }
+    },
+    "endpoint_types": {
+      "component": {
+        "requires_ref": true,
+        "resolve_ref": "lookup component registry using endpoint['id']",
+        "is_persistable": "true if endpoint contains 'id'",
+        "drain_messages": "returns and clears endpoint['ref']['outbox']",
+        "deliver": "appends message to endpoint['ref']['inbox']"
+      },
+      "filetalk": {
+        "requires_ref": false,
+        "resolve_ref": "not applicable",
+        "is_persistable": "true if endpoint contains 'path'",
+        "drain_messages": "reads and removes available JSON messages from filesystem path",
+        "deliver": "writes JSON message to filesystem path"
+      },
+      "queue": {
+        "requires_ref": true,
+        "resolve_ref": "lookup runtime queue by id or provided reference",
+        "is_persistable": "false unless queue identity is serializable",
+        "drain_messages": "drains queue into list",
+        "deliver": "queue.put(message)"
+      },
+      "list": {
+        "requires_ref": true,
+        "resolve_ref": "lookup runtime list by id or provided reference",
+        "is_persistable": "false unless list identity is serializable",
+        "drain_messages": "returns copy and clears list",
+        "deliver": "list.append(message)"
+      }
+    },
+    "constraints": [
+      "Routing layer rewrites channel before calling deliver.",
+      "Delivery function must not mutate message payload.",
+      "drain_messages must atomically remove messages from endpoint.",
+      "Routing runtime MUST NOT perform endpoint resolution; binding occurs during add_route()."
+    ]
+  },
+  "patchboard_wiring_console": {
+    "name": "patchboard_wiring_console",
+    "description": "Stateful helper API for incrementally constructing patchboard routes using a provisional wiring model. Routes are staged locally and finalized only when commit_links() is called.",
+    "state": {
+      "wire": {
+        "src": "endpoint_spec or null",
+        "dest": "endpoint_spec or null",
+        "persist": "boolean (default false)",
+        "channel-links": "list of (src_channel, dest_channel) tuples"
+      }
+    },
+    "endpoint_spec_formats": [
+      [
+        "component",
+        "<id>"
+      ],
+      [
+        "filetalk",
+        "<path>"
+      ],
+      "<runtime component dict>",
+      [
+        "list",
+        "<list-object>"
+      ],
+      [
+        "queue",
+        "<queue-object>"
+      ]
+    ],
+    "functions": {
+      "address_source(x)": {
+        "description": "Assign source endpoint spec and reset provisional wiring state.",
+        "behavior": [
+          "wire['src'] = normalize_endpoint_spec(x)",
+          "wire['persist'] = false",
+          "wire['channel-links'] = []"
+        ]
+      },
+      "address_dest(x)": {
+        "description": "Assign destination endpoint spec.",
+        "behavior": "wire['dest'] = normalize_endpoint_spec(x)"
+      },
+      "address_components(src, dest)": {
+        "description": "Convenience method equivalent to calling address_source(src) and address_dest(dest)."
+      },
+      "persist_links()": {
+        "description": "Mark subsequent committed routes as persistent (subject to add_route validation).",
+        "behavior": "wire['persist'] = true"
+      },
+      "link_channels(src_channel, dest_channel)": {
+        "description": "Stage a channel mapping between current source and destination without creating routes yet.",
+        "behavior": [
+          "Validate wire['src'] exists.",
+          "Validate wire['dest'] exists.",
+          "Append (src_channel, dest_channel) to wire['channel-links']."
+        ]
+      },
+      "commit_links()": {
+        "description": "Finalize all staged channel mappings by creating route objects and passing them to add_route(). Clears provisional channel links afterward.",
+        "behavior": [
+          "Validate wire['src'] exists.",
+          "Validate wire['dest'] exists.",
+          "Validate wire['channel-links'] not empty.",
+          "For each (src_channel, dest_channel) in wire['channel-links']:",
+          "  route = {",
+          "    'src': wire['src'],",
+          "    'dest': wire['dest'],",
+          "    'src-channel': src_channel,",
+          "    'dest-channel': dest_channel,",
+          "    'persistent': wire['persist']",
+          "  }",
+          "  call add_route(route)",
+          "After processing all links:",
+          "  wire['channel-links'] = []",
+          "  wire['persist'] = false",
+          "commit_links() preserves current src and dest addressing context."
+        ]
+      }
+    },
+    "design_principles": [
+      "Wiring console builds provisional topology separate from execution.",
+      "Routes become active only after commit_links().",
+      "Topology validation and endpoint binding occur inside add_route(), not here.",
+      "Source and destination endpoints remain latched between commits.",
+      "Channel mappings are transactional and cleared after commit."
+    ],
+    "normalize_endpoint_spec": {
+      "name": "normalize_endpoint_spec",
+      "description": "Converts user-provided endpoint identifiers into canonical endpoint specification dictionaries. Function is idempotent.",
+      "idempotency_rule": [
+        "If input already conforms to canonical endpoint structure, validate and return unchanged."
+      ],
+      "canonical_structure": {
+        "type": "endpoint implementation type",
+        "id": "symbolic identifier (optional)",
+        "path": "filesystem path (optional)",
+        "ref": "runtime object reference (optional)"
+      },
+      "endpoint_canonical_order": [
+        "type",
+        "id",
+        "path",
+        "ref"
+      ],
+      "input_forms": [
+        [
+          "component",
+          "<id>"
+        ],
+        [
+          "filetalk",
+          "<path>"
+        ],
+        "<runtime component dict>",
+        [
+          "list",
+          "<list-object>"
+        ],
+        [
+          "queue",
+          "<queue-object>"
+        ],
+        "<canonical endpoint dictionary>"
+      ],
+      "rules": [
+        "If input is canonical structure: validate fields for known endpoint types and return unchanged.",
+        "If input is tuple ('component', id_string): return { 'type': 'component', 'id': id_string }",
+        "If input is tuple ('filetalk', path_string): return { 'type': 'filetalk', 'path': path_string }",
+        "If input is a dict assumed to be a runtime component: return { 'type': 'component', 'ref': input }",
+        "If input is tuple ('list', list_object): return { 'type': 'list', 'ref': list_object }",
+        "If input is tuple ('queue', queue_object): return { 'type': 'queue', 'ref': queue_object }",
+        "Missing optional fields are omitted.",
+        "Fields outside this schema are invalid."
+      ],
+      "persistence_rules": [
+        "Endpoint specs containing 'ref' are non-persistent.",
+        "Endpoint specs containing only JSON-serializable fields may be persistent.",
+        "By default: only ('component','<id>') and ('filetalk','<path>') qualify for persistence."
+      ],
+      "error_conditions": [
+        "Unknown tuple type.",
+        "Unsupported input structure."
+      ],
+      "design_principles": [
+        "Normalization must be deterministic.",
+        "Normalization must not resolve runtime bindings.",
+        "Resolution occurs later during add_route()."
+      ]
+    }
+  },
+  "add_route": {
+    "name": "add_route",
+    "description": "Bind a declarative route into executable topology by validating endpoint specifications, resolving runtime references, and enforcing persistence rules.",
+    "steps": [
+      "Normalize src and dest endpoint specifications.",
+      "Lookup endpoint behavior contracts for both endpoints.",
+      "Resolve runtime refs if endpoint type requires binding.",
+      "Validate persistence eligibility using endpoint behavior contracts.",
+      "If persistent=true and either endpoint is not persistable, raise error.",
+      "Append fully-bound route object to routing table."
+    ],
+    "design_principles": [
+      "Topology binding occurs once at route insertion.",
+      "Routing execution performs no resolution or validation.",
+      "Endpoint type definitions control persistence eligibility.",
+      "Endpoint spec remains canonical structure."
     ]
   },
   "routing_model": {
     "description": "Patchboard routing fabric maps signal channels between endpoints.",
     "route_dictionary": {
-      "src": "<endpoint description>",
+      "src": "<endpoint specification>",
       "src-channel": "string",
-      "dest": "<endpoint description>",
+      "dest": "<endpoint specification>",
       "dest-channel": "string",
       "persistent": "boolean"
     },
     "routing_semantics": [
-      "Routing is destructive with respect to src outbox: messages are consumed or recycled after routing.",
-      "For each consumed message whose channel matches src-channel:",
+      "Routing is destructive with respect to source message availability: messages are drained from the source endpoint.",
+      "All drained messages are examined; routing applies only to messages whose channel matches src-channel.",
       "Duplicate the message envelope per matching destination.",
       "Rewrite channel to dest-channel for that delivery.",
-      "Deliver the copied message to dest inbox.",
-      "signal and timestamp remain unchanged."
+      "Deliver the copied message via the destination endpoint's delivery mechanism.",
+      "Signal payload and timestamp remain unchanged.",
+      "Endpoint specifications referenced by routes are canonical runtime objects."
     ],
     "fanout_rule": "If multiple routes match, the message is delivered to each target (one copy per target).",
     "design_principles": [
@@ -170,116 +390,231 @@
       "Topology is external to components."
     ]
   },
+  "canonical_route_object": {
+    "name": "canonical_route_object",
+    "description": "Canonical structure for a single patchboard route definition.",
+    "structure": {
+      "src": "<endpoint_spec>",
+      "src-channel": "string",
+      "dest": "<endpoint_spec>",
+      "dest-channel": "string",
+      "persistent": "boolean"
+    },
+    "required_fields": [
+      "src",
+      "src-channel",
+      "dest",
+      "dest-channel"
+    ],
+    "default_values": {
+      "persistent": false
+    },
+    "field_definitions": {
+      "src": "Canonical endpoint specification describing the source container.",
+      "src-channel": "Channel label used to match outgoing messages from source.",
+      "dest": "Canonical endpoint specification describing the destination container.",
+      "dest-channel": "Channel label assigned to message during delivery.",
+      "persistent": "Indicates whether route may be serialized and restored across sessions."
+    },
+    "endpoint_constraints": [
+      "src and dest MUST be normalized endpoint specifications.",
+      "Runtime-only fields such as 'ref' MUST NOT be serialized for persistent routes."
+    ],
+    "normalization_rules": [
+      "Endpoint specs MUST conform to normalized endpoint schema.",
+      "Normalization may be performed during add_route().",
+      "Missing 'persistent' field is treated as false.",
+      "Unknown fields MAY exist for extension or metadata purposes, but normalization and routing logic MUST ignore fields outside the canonical schema."
+    ],
+    "ordering_rules": [
+      "Canonical field ordering SHOULD be preserved during serialization for deterministic output.",
+      [
+        "src",
+        "src-channel",
+        "dest",
+        "dest-channel",
+        "persistent"
+      ]
+    ],
+    "design_principles": [
+      "Route object remains declarative and serializable.",
+      "Runtime resolution is separate from route definition.",
+      "Routing logic depends only on canonical structure."
+    ]
+  },
+  "endpoint_resolution_policy": {
+    "name": "Endpoint Resolution Policy",
+    "purpose": "Define when and how endpoint specifications are resolved into runtime references so that routing execution remains simple, direct, and deterministic.",
+    "principles": [
+      "Endpoint resolution occurs during topology management (e.g., add_route), not during routing execution.",
+      "Routing operates only on executable endpoints (either fully-bound runtime endpoints or directly executable endpoint specs).",
+      "Endpoint specifications remain the canonical structure for both serialization and runtime use.",
+      "Execution phase must not perform endpoint resolution or topology interpretation."
+    ],
+    "endpoint_spec_structure": {
+      "type": "string identifying endpoint behavior type",
+      "id": "optional symbolic identifier used for persistent routes and serialization",
+      "ref": "optional runtime reference to endpoint object; required only for endpoint types needing runtime binding"
+    },
+    "resolution_rules": [
+      "When add_route() is called, endpoint specifications MUST be resolved immediately if their type requires a runtime object.",
+      "Presence of 'id' alone does not imply resolution; resolution depends on endpoint type.",
+      "Resolved endpoint specs are stored directly in the routing table.",
+      "Routing execution MUST assume endpoint specs are executable without further resolution."
+    ],
+    "filetalk_exception": [
+      "FileTalk endpoints are directly executable from their specification and do not require a runtime 'ref'.",
+      "FileTalk behavior operates directly on endpoint specification fields (e.g., filesystem path)."
+    ],
+    "routing_execution_assumptions": [
+      "route['src'] and route['dest'] are executable endpoint specs.",
+      "Routing MUST NOT call resolve_endpoint().",
+      "Routing MUST NOT rebuild endpoint metadata structures.",
+      "Routing interacts with endpoints via endpoint_behavior[type] using endpoint spec directly."
+    ],
+    "architectural_goal": [
+      "Separate topology compilation from execution.",
+      "Treat routes as fully-bound patchboard connections.",
+      "Minimize runtime branching and interpretation inside routing loop."
+    ]
+  },
   "execution_model": {
-    "description": "Two-phase cooperative main loop.",
+    "description": "Two-phase cooperative runtime loop operating over a pre-bound patchboard topology.",
     "main_loop": [
       "RouteEverything()",
       "ActivateOneTurnPerComponent()",
       "repeat"
     ],
     "phase_1_RouteEverything": {
-      "summary": "Consume messages from outboxes and deliver to destination inboxes according to routes.",
+      "summary": "Drain messages from source endpoints and deliver routed copies to destination endpoints.",
+      "behavior": [
+        "Routing consumes all available messages from each source endpoint (destructive drain).",
+        "Routes are pre-bound; no endpoint resolution or validation occurs during execution.",
+        "Message envelopes are duplicated per matching route.",
+        "Channel is rewritten to destination channel.",
+        "Signal payload and timestamp remain unchanged."
+      ],
+      "assumptions": [
+        "All routes contain executable endpoint specifications.",
+        "Endpoint binding occurred during topology construction (add_route).",
+        "Endpoint behavior lookup is deterministic via endpoint_behavior[type]."
+      ],
       "notes": [
-        "Messages emitted during activation in Phase 2 are not routed until the next cycle's Phase 1."
+        "Messages emitted during activation are not routed until the next cycle."
       ]
     },
     "phase_2_ActivateOneTurnPerComponent": {
-      "summary": "Round-robin fairness: each component consumes at most one inbox message per cycle.",
+      "summary": "Fair round-robin activation where each component processes at most one message per cycle.",
       "steps": [
-        "Iterate components in stable order.",
-        "If inbox non-empty: pop exactly one message.",
-        "Set g['component'] and g['msg'].",
-        "Invoke activation()."
+        "Iterate components in stable deterministic order.",
+        "If component inbox contains at least one message:",
+        "  Pop exactly one message (FIFO).",
+        "  Set g['component'] to current component.",
+        "  Set g['msg'] to popped message.",
+        "  Invoke component['activation']()."
       ]
     },
-    "properties": [
-      "Deterministic progression",
-      "Fairness between components",
-      "Avoid runaway cascades"
-    ],
     "activation_rule": {
-      "rule": "Component eligible when inbox contains at least one message."
+      "rule": "Component becomes eligible for execution when its inbox contains at least one message."
     },
     "noop_messages": {
       "description": "Messages used solely to activate component turns.",
       "use_cases": [
         "Manual triggering",
-        "Timers",
-        "Maintenance pulses"
+        "Timers or scheduled pulses",
+        "Maintenance or housekeeping cycles"
       ]
-    }
+    },
+    "properties": [
+      "Deterministic progression through explicit two-phase cycle.",
+      "Routing and execution are strictly separated.",
+      "Fairness enforced by one-message-per-component-per-cycle.",
+      "Prevents runaway cascades within a single tick.",
+      "Topology changes affect only future cycles."
+    ],
+    "architectural_principles": [
+      "Topology compilation is separate from runtime execution.",
+      "Routing is propagation only; activation performs behavior.",
+      "Components remain isolated machines connected by patchboard wiring.",
+      "Execution semantics are independent of endpoint implementation type."
+    ]
   },
   "routing_algorithm": {
     "name": "RouteEverything",
-    "description": "Consumes messages from source outboxes and delivers copies to destination inboxes according to route definitions. Runs as Phase 1 of each runtime cycle.",
+    "description": "Consumes all available messages from source endpoints (destructive drain) and delivers copies to destination endpoints according to route definitions. Runs as Phase 1 of each runtime cycle.",
     "principles": [
-      "Routing is destructive with respect to source outboxes.",
+      "Routing is destructive with respect to source message availability (messages are drained).",
       "Routing is propagation, not execution.",
       "All available messages are routed during this phase.",
       "Messages emitted during activation are routed in the next cycle.",
       "Signal payload is conceptually immutable.",
-      "Channel is rewritten during delivery."
+      "Channel is rewritten during delivery.",
+      "Endpoint specifications are already resolved at route creation time.",
+      "Endpoint specs remain canonical; routing uses identity indexing only for grouping."
     ],
     "high_level_steps": [
-      "Initialize global runtime mapping: objid = {}.",
-      "Resolve all active routes into runtime endpoints.",
-      "Assign runtime ids using id(obj) and populate objid[id(obj)] = obj.",
-      "Group routes by source endpoint id and source channel to form route_index.",
-      "Iterate source endpoint ids in stable order.",
-      "Retrieve source endpoint via objid[src_id].",
-      "Obtain source outbox using endpoint_behavior table.",
-      "While source outbox contains messages:",
-      "  Remove (consume) next message (FIFO).",
+      "Initialize objid mapping (identity -> endpoint spec).",
+      "Build route_index grouped by source endpoint identity and source channel.",
+      "Iterate source endpoint identities in stable deterministic order.",
+      "Retrieve endpoint spec from objid.",
+      "Lookup endpoint behavior using endpoint type.",
+      "Drain all available messages from the source via drain_messages().",
+      "For each drained message:",
       "  Lookup fanout using route_index[src_id][message.channel].",
       "  For each matching destination:",
       "    Create copy of message envelope.",
       "    Rewrite channel to route.dest-channel.",
-      "    Deliver via destination endpoint delivery function.",
-      "After routing completes, clear objid mapping."
+      "    Deliver via destination endpoint delivery function."
     ],
     "code": [
       "objid = {}",
       "route_index = {}",
+      "",
+      "# Compile routing index",
       "for route in active_routes:",
-      "    src_obj = resolve(route['src'])",
-      "    dest_obj = resolve(route['dest'])",
-      "    src_id = id(src_obj)",
-      "    dest_id = id(dest_obj)",
-      "    objid[src_id] = src_obj",
-      "    objid[dest_id] = dest_obj",
+      "    src_ep = route['src']",
+      "    dest_ep = route['dest']",
+      "",
+      "    src_id = id(src_ep)",
+      "",
+      "    objid[src_id] = src_ep",
+      "",
       "    route_index.setdefault(src_id, {})",
       "    route_index[src_id].setdefault(route['src-channel'], [])",
-      "    route_index[src_id][route['src-channel']].append((dest_id, route['dest-channel']))",
+      "    route_index[src_id][route['src-channel']].append((dest_ep, route['dest-channel']))",
+      "",
+      "# Execute routing",
       "for src_id, channel_map in route_index.items():",
-      "    src_endpoint = objid[src_id]",
-      "    src_behavior = endpoint_behavior[src_endpoint['type']]",
-      "    outbox = src_behavior['get_outbox'](src_endpoint)",
-      "    while outbox:",
-      "        msg = outbox.pop(0)",
+      "    src_ep = objid[src_id]",
+      "    src_behavior = endpoint_behavior[src_ep['type']]",
+      "    msgs = src_behavior['drain_messages'](src_ep)",
+      "",
+      "    for msg in msgs:",
       "        fanout = channel_map.get(msg['channel'], [])",
-      "        for (dest_id, dest_channel) in fanout:",
-      "            dest_endpoint = objid[dest_id]",
-      "            dest_behavior = endpoint_behavior[dest_endpoint['type']]",
+      "        for (dest_ep, dest_channel) in fanout:",
+      "            dest_behavior = endpoint_behavior[dest_ep['type']]",
       "            new_msg = {",
       "                'channel': dest_channel,",
       "                'signal': msg['signal'],",
       "                'timestamp': msg['timestamp']",
       "            }",
-      "            dest_behavior['deliver'](dest_endpoint, new_msg)",
+      "            dest_behavior['deliver'](dest_ep, new_msg)",
+      "",
       "objid.clear()"
     ],
     "fanout_behavior": [
-      "If multiple routes reference the same src endpoint and src-channel, the message is duplicated once per matching route."
+      "If multiple routes reference the same src endpoint and src-channel, each drained message is duplicated once per matching destination."
     ],
     "ordering_guarantees": [
-      "Messages are routed in FIFO order per source outbox.",
+      "Per-source message routing order is the order returned by drain_messages().",
       "Source endpoints are iterated in stable deterministic order.",
-      "Destination delivery ordering reflects route index ordering."
+      "Destination delivery ordering reflects route_index ordering."
     ],
     "non_goals": [
       "Routing fairness is not required; routing drains available messages completely.",
       "Routing does not activate components.",
-      "Routing does not modify component internal state."
+      "Routing does not resolve endpoint specs during execution.",
+      "Routing does not impose timestamp-based ordering."
     ]
   },
   "topology_management": {
