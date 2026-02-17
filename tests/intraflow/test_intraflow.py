@@ -791,3 +791,167 @@ def test_wiring_console_end_to_end():
     ifl.run()
 
     assert ifl.components["consumer"]["state"]["got"] == {"msg": "wired"}
+
+
+# =============================================================================
+# FILETALK TRANSPORT
+# =============================================================================
+
+import json
+import os
+import tempfile
+
+
+@pytest.fixture
+def ftdir(tmp_path):
+    """Provide a temporary directory for filetalk tests."""
+    return str(tmp_path / "filetalk")
+
+
+def test_filetalk_deliver_creates_file(ftdir):
+    """Delivering to a filetalk endpoint writes a .json file."""
+    ep = {"type": "filetalk", "path": ftdir}
+    msg = ifl.make_message("out", {"hello": "world"})
+    ifl._filetalk_deliver(ep, msg)
+
+    files = os.listdir(ftdir)
+    assert len(files) == 1
+    assert files[0].endswith(".json")
+
+    with open(os.path.join(ftdir, files[0]), "r", encoding="utf-8") as f:
+        written = json.load(f)
+    assert written["channel"] == "out"
+    assert written["signal"] == {"hello": "world"}
+    assert written["timestamp"] == msg["timestamp"]
+
+
+def test_filetalk_drain_reads_and_removes(ftdir):
+    """Draining a filetalk endpoint reads messages and removes files."""
+    os.makedirs(ftdir, exist_ok=True)
+    msg = ifl.make_message("data", {"val": 42})
+    filepath = os.path.join(ftdir, "msg001.json")
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(msg, f)
+
+    ep = {"type": "filetalk", "path": ftdir}
+    msgs = ifl._filetalk_drain(ep)
+
+    assert len(msgs) == 1
+    assert msgs[0]["channel"] == "data"
+    assert msgs[0]["signal"] == {"val": 42}
+    # File should be removed after drain
+    assert len(os.listdir(ftdir)) == 0
+
+
+def test_filetalk_drain_skips_unparseable(ftdir):
+    """Files that fail JSON parsing are skipped (presumed incomplete)."""
+    os.makedirs(ftdir, exist_ok=True)
+    # Write a valid message
+    good = os.path.join(ftdir, "good.json")
+    with open(good, "w", encoding="utf-8") as f:
+        json.dump(ifl.make_message("ch", {"ok": True}), f)
+    # Write an incomplete/corrupt file
+    bad = os.path.join(ftdir, "bad.json")
+    with open(bad, "w", encoding="utf-8") as f:
+        f.write('{"channel": "ch", "signal": {')
+
+    ep = {"type": "filetalk", "path": ftdir}
+    msgs = ifl._filetalk_drain(ep)
+
+    assert len(msgs) == 1
+    assert msgs[0]["signal"] == {"ok": True}
+    # Bad file remains, good file removed
+    remaining = os.listdir(ftdir)
+    assert remaining == ["bad.json"]
+
+
+def test_filetalk_drain_nonexistent_dir(ftdir):
+    """Draining a nonexistent directory returns empty list."""
+    ep = {"type": "filetalk", "path": ftdir}
+    msgs = ifl._filetalk_drain(ep)
+    assert msgs == []
+
+
+def test_filetalk_drain_ignores_non_json(ftdir):
+    """Non-.json files in the directory are ignored."""
+    os.makedirs(ftdir, exist_ok=True)
+    with open(os.path.join(ftdir, "readme.txt"), "w") as f:
+        f.write("not a message")
+    with open(os.path.join(ftdir, "msg.json"), "w", encoding="utf-8") as f:
+        json.dump(ifl.make_message("ch", {}), f)
+
+    ep = {"type": "filetalk", "path": ftdir}
+    msgs = ifl._filetalk_drain(ep)
+
+    assert len(msgs) == 1
+    # txt file should remain
+    assert "readme.txt" in os.listdir(ftdir)
+
+
+def test_filetalk_as_dest_in_routing(ftdir):
+    """Component routes messages to a filetalk directory endpoint."""
+    src = ifl.register_component("src", lambda: None)
+    _add_route(("component", "src"), "out", ("filetalk", ftdir), "delivered")
+
+    src["outbox"].append(ifl.make_message("out", {"routed": True}))
+    ifl.route_everything()
+
+    files = os.listdir(ftdir)
+    assert len(files) == 1
+    with open(os.path.join(ftdir, files[0]), "r", encoding="utf-8") as f:
+        msg = json.load(f)
+    assert msg["channel"] == "delivered"
+    assert msg["signal"] == {"routed": True}
+
+
+def test_filetalk_as_src_in_routing(ftdir):
+    """Filetalk directory endpoint drains into a component inbox via routing."""
+    os.makedirs(ftdir, exist_ok=True)
+    msg = ifl.make_message("input", {"from_file": True})
+    with open(os.path.join(ftdir, "msg.json"), "w", encoding="utf-8") as f:
+        json.dump(msg, f)
+
+    dest = ifl.register_component("dest", lambda: None)
+    _add_route(("filetalk", ftdir), "input", ("component", "dest"), "in")
+
+    ifl.route_everything()
+
+    assert len(dest["inbox"]) == 1
+    assert dest["inbox"][0]["channel"] == "in"
+    assert dest["inbox"][0]["signal"] == {"from_file": True}
+    assert len(os.listdir(ftdir)) == 0
+
+
+def test_filetalk_end_to_end(ftdir):
+    """Full cycle: component emits -> filetalk dir -> route back to component."""
+    outdir = os.path.join(ftdir, "outbox")
+    indir = os.path.join(ftdir, "inbox")
+
+    def producer_act():
+        ifl.emit_signal("out", {"step": "produced"})
+
+    def consumer_act():
+        ifl.g["component"]["state"]["got"] = ifl.g["msg"]["signal"]
+
+    producer = ifl.register_component("producer", producer_act)
+    ifl.register_component("consumer", consumer_act)
+
+    # producer -> outdir (filetalk)
+    _add_route(("component", "producer"), "out", ("filetalk", outdir), "relay")
+
+    # Seed and run two cycles:
+    #   Cycle 1: route (nothing to route), activate (producer emits to outbox)
+    #   Cycle 2: route (outbox -> filetalk dir), activate (nothing)
+    producer["inbox"].append(ifl.make_message("kick", {}))
+    ifl.run_cycle()
+    ifl.run_cycle()
+
+    # Verify file landed
+    assert len(os.listdir(outdir)) == 1
+
+    # Now route from outdir -> consumer
+    _add_route(("filetalk", outdir), "relay", ("component", "consumer"), "in")
+    ifl.run_cycle()
+
+    assert ifl.components["consumer"]["state"]["got"] == {"step": "produced"}
+    assert len(os.listdir(outdir)) == 0

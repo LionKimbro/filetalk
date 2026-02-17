@@ -6,7 +6,7 @@
     "date": "2026-02-16"
   },
 
-  "last-evaluated": "<put yyyy-mm-dd here>",
+  "last-evaluated": "2026-02-16",
 
   "instructions for evaluator": [
     "Update last-evaluated to the current date.",
@@ -18,78 +18,129 @@
   "evaluation": {
 
     "connectable": {
-      "status": "???",
+      "status": "GREEN",
       "evaluate": [
         "Can the programmer create routes incrementally -- from a source, a destination, and two channels?",
         "Do all functions require 2 or fewer arguments?  (flags argument does not count against.)",
         "Is there API documentation for all of this?"
       ],
-      "findings": []
+      "findings": [
+        "Wiring console fully implements incremental route construction: address_source(x), address_dest(x), link_channels(src_ch, dest_ch), commit_links().",
+        "address_components(src, dest) is a convenience shortcut for addressing both in one call.",
+        "All wiring console functions accept 1-2 arguments.",
+        "add_route(route) accepts a single route dict — also 1 argument.",
+        "normalize_endpoint_spec(x) supports tuple shorthand: ('component', 'id'), ('filetalk', '/path'), ('list', obj), ('queue', obj).",
+        "persist_links() sets persistence flag before commit — zero arguments.",
+        "Source and dest remain latched between commits, allowing multiple commit cycles without re-addressing.",
+        "API documentation exists as docstrings on all public functions. No standalone doc file yet."
+      ]
     },
 
     "connection types": {
-      "status": "???",
+      "status": "YELLOW",
       "evaluate": [
         "Can you interact with components, both as src and dest?",
         "Can you interact with lists, both as src and dest?",
         "Can you interact with queues, both as src and dest?",
         "Can you interact with folders on the filesystem, per filetalk system, both as src and dest?"
       ],
-      "findings": []
+      "findings": [
+        "Components: fully functional as both src and dest. Tested with fanout, pipelines, self-loops.",
+        "Lists: fully functional as both src (drain_messages copies and clears) and dest (append). Tested.",
+        "Queues: endpoint_behavior defined with drain and deliver via queue.empty()/get_nowait()/put(). Not exercised in tests yet — tests use lists for queue-like behavior.",
+        "FileTalk (filesystem): fully functional as both src and dest. drain_messages reads .json files, parses, and deletes; deliver writes .json with uuid filename. Tested with 8 dedicated tests including end-to-end routing."
+      ]
     },
 
     "functional": {
-      "status": "???",
+      "status": "GREEN",
       "evaluate": [
         "Can you actually successfully send messages through filetalk, in a variety of circumstances?"
       ],
-      "findings": []
+      "findings": [
+        "Messages route correctly through single hops, multi-stage pipelines (A->B->C), fanout (1-to-many), and self-loops.",
+        "Channel rewriting works correctly. Signal and timestamp preserved through routing.",
+        "Destructive drain semantics confirmed — source outboxes are emptied after routing.",
+        "Messages with no matching route channel are still consumed (drained but not delivered).",
+        "Filesystem-based filetalk transport is fully functional: component-to-directory, directory-to-component, and full round-trip tested.",
+        "64 tests pass covering all scenarios."
+      ]
     },
 
     "testable": {
-      "status": "???",
+      "status": "GREEN",
       "evaluate": [
         "Can the system be reset at run-time, to a zero state, ready for repopulation?"
       ],
-      "findings": []
+      "findings": [
+        "components.clear(), routes.clear(), and g reset provide full zero-state reset.",
+        "wire state (wiring console) also resettable.",
+        "Test suite uses an autouse fixture that resets all state before and after every test — confirms clean reset works reliably.",
+        "56 tests run in sequence with no state leakage between them."
+      ]
     },
 
     "persistence": {
-      "status": "???",
+      "status": "YELLOW",
       "evaluate": [
         "Is the system persistable?  Can the state of routes be saved to disk safely, and then restored?",
         "Is the 'persistence' flagging system in the route dictionaries being respected?"
       ],
       "notes": ["Routes labelled non-persistent must not be persisted, or even attempted to persist."],
-      "findings": []
+      "findings": [
+        "Persistence flag is fully implemented in the route lifecycle.",
+        "add_route() defaults persistent to false. persist_links() sets it to true for wiring console batches.",
+        "add_route() validates persistence eligibility via endpoint_behavior['is_persistable']: components with 'id' and filetalk with 'path' qualify; list/queue with 'ref' do not.",
+        "Attempting to persist a non-persistable route raises ValueError.",
+        "Actual save-to-disk and restore-from-disk functionality is NOT yet implemented — the flagging infrastructure is in place but no serialization code exists."
+      ]
     },
 
     "running flexibility": {
-      "status": "???",
+      "status": "YELLOW",
       "evaluate": [
         "Can the programmer run one iteration of the system?",
         "Can the programmer run multiple iterations of the system?",
         "Can the programmer let the system run until a global quit flag, or perhaps a Ctrl-Break is issued?",
         "Is it documented anywhere, how to do all this?  Doesn't necessarily have to be in the package, though, preferably so."
       ],
-      "findings": []
-    }
-    
+      "findings": [
+        "run_cycle() executes exactly one cycle (route + activate). Works.",
+        "run(N) executes exactly N cycles. Works.",
+        "run() (or run(0)) runs until quiescent. Works.",
+        "No global quit flag or Ctrl-Break/signal handler support exists. The only stop condition is quiescence.",
+        "Docstrings document run/run_cycle/is_quiescent. No standalone usage guide."
+      ]
+    },
+
     "topology_management_quiescence_rules": {
-      "status": "???",
+      "status": "YELLOW",
       "evaluate": [
         "Are upgrades to the topology respecting quiescence rules?"
       ],
-      "findings": []
+      "findings": [
+        "is_quiescent() exists and correctly checks all inboxes and outboxes.",
+        "Spec states routes may only be added/removed at quiescence.",
+        "No runtime enforcement: add_route() and remove_route() do not check is_quiescent() before modifying topology.",
+        "Relies on programmer discipline. No guard, warning, or staging queue."
+      ]
     },
 
     "filetalk_alignment_and_transport_abstraction": {
-      "status": "???",
+      "status": "GREEN",
       "evaluate": [
         "Does the system support filetalk input and output yet?",
         "Does it work?  (Are there tests for it?)"
       ],
-      "findings": []
+      "findings": [
+        "FileTalk transport fully implemented per patchboard-file-transport.v1 spec.",
+        "drain_messages reads .json files from endpoint path, parses as JSON, deletes on success, skips unparseable files (presumed incomplete per spec).",
+        "deliver writes message as UTF-8 JSON with uuid-based unique filename, creates directory if needed.",
+        "Non-.json files in directory are ignored.",
+        "Nonexistent directory returns empty drain (no error).",
+        "8 dedicated filetalk tests: deliver, drain, skip-unparseable, nonexistent-dir, ignore-non-json, as-dest-in-routing, as-src-in-routing, full end-to-end round-trip.",
+        "requires_ref is false — filetalk endpoints operate directly from path in endpoint spec, no runtime binding needed."
+      ]
     }
   }
 }

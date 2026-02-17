@@ -7,7 +7,10 @@ are dict-based machines activated by messages; a patchboard routing fabric
 connects them via channel-rewriting rules.
 """
 
+import json
+import os
 import time
+import uuid
 
 
 # =============================================================================
@@ -150,6 +153,37 @@ def _list_drain(ep):
     ep["ref"].clear()
     return msgs
 
+def _filetalk_drain(ep):
+    """Read and remove all parseable .json message files from ep['path']."""
+    path = ep["path"]
+    msgs = []
+    if not os.path.isdir(path):
+        return msgs
+    for filename in os.listdir(path):
+        if not filename.endswith(".json"):
+            continue
+        filepath = os.path.join(path, filename)
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                msg = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            # Presumed incomplete — skip, retry later
+            continue
+        os.remove(filepath)
+        msgs.append(msg)
+    return msgs
+
+
+def _filetalk_deliver(ep, msg):
+    """Write a message as a .json file into ep['path']."""
+    path = ep["path"]
+    os.makedirs(path, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}.json"
+    filepath = os.path.join(path, filename)
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(msg, f)
+
+
 def _queue_drain(ep):
     msgs = []
     q = ep["ref"]
@@ -169,8 +203,8 @@ endpoint_behavior = {
         "requires_ref": False,
         "resolve_ref": lambda ep: None,
         "is_persistable": lambda ep: "path" in ep,
-        "drain_messages": lambda ep: [],   # placeholder — filesystem transport TBD
-        "deliver": lambda ep, msg: None,   # placeholder — filesystem transport TBD
+        "drain_messages": _filetalk_drain,
+        "deliver": _filetalk_deliver,
     },
     "queue": {
         "requires_ref": True,
