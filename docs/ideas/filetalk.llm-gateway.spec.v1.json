@@ -1,0 +1,124 @@
+{
+  "document": {
+    "document_id": "filetalk.llm-gateway.spec.v1",
+    "title": "FileTalk LLM Gateway Specification",
+    "purpose": "Define gateway components enabling FileTalk-based interaction with LLM systems including conversational memory-preserving interfaces and stateless API-based requests."
+  },
+
+  "specification": {
+    "version": "v1",
+    "status": "draft",
+    "authors": ["Lion Kimbro", "ChatGPT (Wing-Cat)"],
+    "created": "2026-02-04",
+    "scope": "FileTalk-compatible LLM interaction gateways",
+    "conversations": {
+      "first-conversation": "https://chatgpt.com/c/6983ce53-aa80-832f-aba3-4b7bfde2d8cc"
+    }
+  },
+
+  "overview": {
+    "summary": "Defines two complementary gateway types: a conversational gateway preserving ongoing relational context via browser interaction, and a stateless API gateway for isolated queries.",
+    "design_goals": [
+      "Integrate LLM interaction into FileTalk ecosystem",
+      "Preserve long-lived conversational continuity",
+      "Maintain Patchboard Core Message compliance",
+      "Enable bidirectional message flow",
+      "Treat LLM as peer component within Patchboard topology"
+    ]
+  },
+
+  "gateways": {
+
+    "llm_conversation_gateway": {
+
+      "description": "Gateway that bridges live ChatGPT browser interaction into FileTalk message streams while preserving memory features, conversation continuity, and session context.",
+
+      "intent": [
+        "Maintain ongoing conversational state",
+        "Allow programmatic injection of information into live conversation",
+        "Emit conversation events into FileTalk system"
+      ],
+
+      "message_format": {
+        "input_output": {
+          "example": {
+            "channel": "llm-conversation",
+            "signal": {
+              "role": "assistant | user",
+              "content": "string"
+            },
+            "timestamp": "unix_time_seconds"
+          }
+        }
+      },
+
+      "functional_behavior": [
+        "Capture new messages from browser conversation",
+        "Emit messages as FileTalk events",
+        "Accept inbound messages for submission to conversation",
+        "Preserve ordering as observed by UI",
+        "Avoid interpretation of channel semantics"
+      ],
+
+      "implementation_notes": [
+        "Likely implemented as browser extension or automation layer",
+        "Uses DOM observation to detect new messages",
+        "Injects text into conversation input area"
+      ],
+
+      "non_goals": [
+        "Reconstructing conversation state outside UI",
+        "Replacing ChatGPT memory system",
+        "Guaranteeing delivery semantics"
+      ]
+    },
+
+    "openapi_stateless_gateway": {
+
+      "description": "Gateway enabling stateless interaction with OpenAI APIs for isolated queries without reliance on persistent conversational context.",
+
+      "intent": [
+        "Simple question-answer exchange",
+        "Programmatic LLM access",
+        "Low overhead processing"
+      ],
+
+      "message_formats": {
+
+        "request": {
+          "example": {
+            "channel": "openapi-request",
+            "signal": "...text...",
+            "timestamp": "unix_time_seconds"
+          }
+        },
+
+        "response": {
+          "example": {
+            "channel": "openapi-response",
+            "signal": "...text...",
+            "timestamp": "unix_time_seconds"
+          }
+        }
+      },
+
+      "functional_behavior": [
+        "Translate FileTalk message into API call",
+        "Return LLM output as FileTalk message",
+        "No persistent memory across requests"
+      ],
+
+      "differences_from_conversation_gateway": [
+        "No relational memory continuity",
+        "No session awareness",
+        "Fully programmatic"
+      ]
+    }
+  },
+
+  "architectural_philosophy": {
+    "llm_as_peer": "LLM interactions are treated as components participating within Patchboard ecosystems rather than as external tools.",
+    "message_uniformity": "All interaction conforms to Patchboard Core Message specification.",
+    "transport_agnostic": true
+  }
+}

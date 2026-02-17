@@ -289,6 +289,7 @@ def publish_status():
         "tick": g["tick"],
         "last_change": f"{time.time():.6f}",
         "delay_seconds": app.ctx["router.delay_seconds"],
+        "alive": not is_draining(),
         "stats": dict(g["stats"]),
     }
     write_json_atomic(g["status_path"], status, "p")
@@ -629,6 +630,7 @@ def has_messages_in_router_outbox():
 def enter_draining_mode_and_drain():
     """Freeze routing, emit shutdown, drain deliveries from router OUTBOX."""
     g["mode"] = "draining"
+    publish_status()  # Immediately publish alive: false
 
     emit_shutdown_message_and_event()
 

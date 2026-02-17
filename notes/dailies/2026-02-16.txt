@@ -1,0 +1,17 @@
+date: 2026-02-16
+
+
+== Step-away ==
+date: 2026-02-16
+chatgpt: https://chatgpt.com/c/69925529-9574-8326-991c-bd7f51b51039
+svg: f:/lion/github/filetalk/docs/intraflow_routing-mechanics_diagram.svg
+
+Right now, I'm arguing with Wing-Cat about how to perform the message delivery optimization.
+
+Wing-Cat's saying, "We should only process sources that actually emitted signals.
+That is:
+
+  - components with outbox messages
+  - queues that actually contain messages
+  - filetalk folders that contain messages
+

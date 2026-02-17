@@ -1,0 +1,10 @@
+date: 2026-02-02
+
+
+Patchboard Router:
+* the status.json needs to tell whether it is live and running, or not;
+  When you quit the program, it needs to update the status.json so that the "running" key is false,
+  and when you start the program it needs to update the status.json so that the "running" key is true;
+  And once every so many minutes, we should likely update the status.json.
+* a "clear" command, that deletes all outgoing messages from the router;
+* the program is leaving an outgoing shutdown message when it shuts down; it should be deleted after the final draining delivery

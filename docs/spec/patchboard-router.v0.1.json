@@ -1,10 +1,11 @@
 {
   "document": {
     "title": "Patchboard Router All-Aspects Design Document",
-    "documentid": "spec.filetalk-patchboard-router",
+    "document_id": "spec.filetalk-patchboard-router",
     "version": "0.1",
     "created": "2026-02-02",
-    "epoch": "filetalk_2025_epoch_5"
+    "epoch": "filetalk_2025_epoch_5",
+    "purpose": "complete design of the Patchboard router"
   },
   "descriptors": {
     "package": "patchboard_router",
@@ -121,13 +122,28 @@
           "description": "Request creation of a routing connection.",
           "cli-arguments": {
             "required": [
-              {"flag": "--sf", "description": "source-folder path"},
-              {"flag": "--sc", "description": "source-channel name"},
-              {"flag": "--df", "description": "destination-folder path"},
-              {"flag": "--dc", "description": "destination-channel name"}
+              {
+                "flag": "--sf",
+                "description": "source-folder path"
+              },
+              {
+                "flag": "--sc",
+                "description": "source-channel name"
+              },
+              {
+                "flag": "--df",
+                "description": "destination-folder path"
+              },
+              {
+                "flag": "--dc",
+                "description": "destination-channel name"
+              }
             ],
             "optional": [
-              {"flag": "--ack", "description": "acknowledgement file path"}
+              {
+                "flag": "--ack",
+                "description": "acknowledgement file path"
+              }
             ],
             "example": "patchboard link --sf /path/to/OUTBOX --sc data --df /path/to/INBOX --dc received"
           },
@@ -156,13 +172,28 @@
           "description": "Request removal of a routing connection.",
           "cli-arguments": {
             "required": [
-              {"flag": "--sf", "description": "source-folder path"},
-              {"flag": "--sc", "description": "source-channel name"},
-              {"flag": "--df", "description": "destination-folder path"},
-              {"flag": "--dc", "description": "destination-channel name"}
+              {
+                "flag": "--sf",
+                "description": "source-folder path"
+              },
+              {
+                "flag": "--sc",
+                "description": "source-channel name"
+              },
+              {
+                "flag": "--df",
+                "description": "destination-folder path"
+              },
+              {
+                "flag": "--dc",
+                "description": "destination-channel name"
+              }
             ],
             "optional": [
-              {"flag": "--ack", "description": "acknowledgement file path"}
+              {
+                "flag": "--ack",
+                "description": "acknowledgement file path"
+              }
             ],
             "example": "patchboard unlink --sf /path/to/OUTBOX --sc data --df /path/to/INBOX --dc received"
           },
@@ -325,8 +356,19 @@
             "tick",
             "last_change",
             "delay_seconds",
+            "alive",
             "stats"
           ],
+          "alive": {
+            "type": "boolean",
+            "description": "Indicates whether the router is delivering messages.",
+            "values": {
+              "true": "Router is operational. Messages are being routed and delivered.",
+              "false": "Router is draining. Normal routing has stopped; only final shutdown messages from the router's own OUTBOX are being delivered to subscribers. No new user messages will be routed."
+            },
+            "semantics": "This field is critical for system-wide awareness. When alive is false, normal message delivery has ceased. Subscribers to shutdown notices will still receive the shutdown message before the router exits.",
+            "update_policy": "Set to true on startup. Set to false when entering draining mode. Status is republished immediately when alive changes."
+          },
           "stats_shape": {
             "seen": 0,
             "delivered": 0,

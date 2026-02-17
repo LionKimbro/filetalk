@@ -1,4 +1,9 @@
 {
+  "document": {
+    "document_id": "patchboard.spec.messages.file-transport.v1",
+    "title": "Patchboard File Transport Profile",
+    "purpose": "Documents how Patchboard messages transport on the filesystem."
+  },
   "specification": {
     "name": "FileTalk File Transport Profile",
     "documentid": "patchboard.spec.messages.file-transport.v1",

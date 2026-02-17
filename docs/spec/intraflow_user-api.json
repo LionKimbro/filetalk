@@ -1,0 +1,74 @@
+{
+  "document": {
+    "document_id": "intraflow.user_api.v1",
+    "title": "IntraFlow User-Facing Programming Interface",
+    "purpose": "Describe functions intended for programmers building systems on top of IntraFlow."
+  },
+
+  "development": {"chat-gpt": "https://chatgpt.com/c/6993d533-b158-8326-a2be-d0a6789b56b5"},
+
+  "conceptual_workflow": [
+    "Define activation functions.",
+    "Register components.",
+    "Connect components using routes.",
+    "Inject seed messages.",
+    "Run runtime cycles."
+  ],
+
+  "user_functions": {
+
+    "register_component": {
+      "signature": "register_component(component_id, activation)",
+      "description": "Create and register a machine-like component.",
+      "usage_notes": [
+        "activation is called when a message arrives.",
+        "Component state stored in g['component']['state']."
+      ]
+    },
+
+    "add_route": {
+      "signature": "add_route(src, src_channel, dest, dest_channel)",
+      "description": "Connect signal lanes between endpoints via patchboard routing.",
+      "usage_notes": [
+        "Topology is external to components.",
+        "Multiple routes create fanout."
+      ]
+    },
+
+    "emit_signal": {
+      "signature": "emit_signal(channel, signal)",
+      "description": "Emit message during activation.",
+      "usage_notes": [
+        "Only valid during activation.",
+        "Routing occurs next cycle."
+      ]
+    },
+
+    "make_message": {
+      "signature": "make_message(channel, signal)",
+      "description": "Construct message envelopes for manual injection."
+    },
+
+    "run": {
+      "signature": "run(cycles=0)",
+      "description": "Execute runtime.",
+      "usage_notes": [
+        "cycles>0 executes fixed ticks.",
+        "cycles=0 runs until quiescent."
+      ]
+    },
+
+    "run_cycle": {
+      "signature": "run_cycle()",
+      "description": "Execute single deterministic tick."
+    }
+
+  },
+
+  "recommended_usage_pattern": [
+    "Define activation functions using g['msg'].",
+    "Use emit_signal rather than writing directly to outbox.",
+    "Avoid modifying topology while running.",
+    "Use seed messages to start behavior."
+  ]
+}

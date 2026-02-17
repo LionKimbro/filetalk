@@ -1,0 +1,64 @@
+{
+  "document": {
+    "document_id": "intraflow.next_steps.v1",
+    "title": "IntraFlow Implementation Next Steps",
+    "purpose": "Identify logical next improvements to advance runtime maturity while preserving architectural philosophy."
+  },
+
+  "development": {"chat-gpt": "https://chatgpt.com/c/6993d533-b158-8326-a2be-d0a6789b56b5"},
+
+  "next_steps": {
+
+    "endpoint_system_expansion": {
+      "priority": "HIGH",
+      "items": [
+        "Add filetalk endpoint implementation.",
+        "Formalize endpoint typing instead of partial inference.",
+        "Introduce endpoint validation layer."
+      ]
+    },
+
+    "topology_safety": {
+      "priority": "HIGH",
+      "items": [
+        "Enforce route modification only during quiescence.",
+        "Add runtime guard or staging queue for route changes."
+      ]
+    },
+
+    "performance_and_scalability": {
+      "priority": "MEDIUM",
+      "items": [
+        "Optional deque instead of list for inbox/outbox FIFO.",
+        "Precompiled route_index caching between cycles."
+      ]
+    },
+
+    "introspection_and_debugging": {
+      "priority": "MEDIUM",
+      "items": [
+        "Cycle counter.",
+        "Tracing hooks.",
+        "Message logging mode."
+      ]
+    },
+
+    "developer_experience": {
+      "priority": "MEDIUM",
+      "items": [
+        "Helper for seed_message(component_id, channel, signal).",
+        "Declarative topology builder."
+      ]
+    },
+
+    "advanced_runtime_features": {
+      "priority": "LOW",
+      "items": [
+        "Timer/noop injection scheduler.",
+        "Selective activation policies.",
+        "Pause/resume runtime."
+      ]
+    }
+
+  }
+}

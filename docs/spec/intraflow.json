@@ -1,0 +1,325 @@
+{
+  "document": {
+    "document_id": "intraflow.design",
+    "title": "IntraFlow Patchboard Message-Driven Runtime Design Document",
+    "purpose": "explain the design for IntraFlow, a Python module implementing a dataflow system",
+    "document_type": "architecture_description",
+    "architecture_name": "IntraFlow Patchboard Message-Driven Runtime",
+    "version": "0.5"
+  },
+  "development": {
+    "chatgpt": "https://chatgpt.com/c/69925529-9574-8326-991c-bd7f51b51039"
+  },
+  "overview": {
+    "summary": "A deterministic message-driven runtime composed of cooperative components connected through an external patchboard routing fabric. Components activate only when messages arrive in their inbox. Patchboard routes signals between channels by rewriting message envelopes while preserving signal payload and timestamp.",
+    "core_philosophy": [
+      "Components are machines activated by messages.",
+      "Channels represent signal lanes (wires).",
+      "Patchboard governs topology externally via declarative routes.",
+      "Envelope remapping: channel is rewritten; signal and timestamp preserved.",
+      "Signals are JSON-serializable (FileTalk compatible).",
+      "Messages are conceptually immutable to recipients.",
+      "FileTalk compatibility through JSON messages.",
+      "One-message-per-component-per-cycle for fairness and predictability.",
+      "Reflection without enforcement."
+    ]
+  },
+  "message_model": {
+    "description": "Canonical Patchboard message envelope.",
+    "structure": {
+      "channel": "string identifying a signal lane",
+      "signal": "JSON-serializable payload",
+      "timestamp": "Unix timestamp string (seconds since epoch; may include fractional seconds)"
+    },
+    "rules": [
+      "signal must be JSON serializable",
+      "patchboard rewrites channel during delivery",
+      "signal and timestamp are preserved during routing",
+      "components must treat received messages as read-only (conceptually immutable)"
+    ]
+  },
+  "runtime_engine": {
+    "description": "Long-running execution context that owns the main loop, component registry, routing table, and global execution context.",
+    "structures": {
+      "components": "Dictionary mapping component id -> component dictionary.",
+      "routes": "List of route dictionaries (some persistent, some runtime-only).",
+      "g": "Global execution context dictionary."
+    }
+  },
+  "component_structure": {
+    "description": "Minimal machine-like unit of behavior.",
+    "canonical_form": {
+      "type": "INTRAFLOW-COMPONENT",
+      "inbox": [],
+      "outbox": [],
+      "activation": "fn()",
+      "state": {},
+      "channels": {
+        "in": {},
+        "out": {}
+      }
+    },
+    "notes": [
+      "channels field is reflection-only.",
+      "channels are informational and not enforced."
+    ],
+    "fields": {
+      "inbox": "Message container (FIFO queue by default).",
+      "outbox": "Messages emitted during activation.",
+      "activation": "Callable executed during scheduling turn.",
+      "state": "Mutable component-local data.",
+      "channels": {
+        "description": "Reflection-only interface declaration.",
+        "properties": [
+          "Purely informational.",
+          "Not enforced by runtime.",
+          "Used for debugging, inspection, visualization."
+        ],
+        "example": {
+          "out": {
+            "body": {
+              "doc": "primary output text"
+            },
+            "command": {
+              "doc": "control plane commands"
+            }
+          }
+        }
+      }
+    }
+  },
+  "global_execution_context": {
+    "description": "Global dictionary exposing current execution state.",
+    "fields": {
+      "g['component']": "Currently executing component.",
+      "g['msg']": "Message being processed."
+    },
+    "purpose": [
+      "Low-parameter activation model",
+      "Machine-oriented execution style"
+    ]
+  },
+  "emit_api": {
+    "description": "Helper for emitting messages from within activation.",
+    "signature": "emit_signal(channel, signal)",
+    "behavior": [
+      "Create message {channel, signal, timestamp}.",
+      "Append message to g['component']['outbox'].",
+      "No routing occurs here; routing happens in the next cycle."
+    ]
+  },
+  "endpoint_model": {
+    "description": "Endpoints represent message containers or routing interfaces.",
+    "structure": {
+      "type": "endpoint implementation type",
+      "id": "symbolic identifier (for serializable endpoints)",
+      "ref": "runtime object reference (for non-serializable runtime endpoints)",
+      "path": "filesystem path (for filetalk endpoints)"
+    },
+    "endpoint_types": [
+      "component",
+      "filetalk",
+      "queue",
+      "list"
+    ],
+    "examples": [
+      {
+        "type": "component",
+        "id": "renderer"
+      },
+      {
+        "type": "component",
+        "ref": "<runtime component dict>"
+      },
+      {
+        "type": "filetalk",
+        "path": "/tmp/inbox"
+      }
+    ]
+  },
+  "endpoint_resolution": {
+    "description": "How endpoint specs become runtime endpoints.",
+    "rules": [
+      "If endpoint has 'ref', use it directly (runtime-only).",
+      "If endpoint is {type:'component', id:'X'}, resolve to components['X'].",
+      "If endpoint is {type:'filetalk', path:'P'}, resolve to a filesystem endpoint bound to folder P.",
+      "If resolution fails, the route is inactive until it can be resolved."
+    ]
+  },
+  "routing_model": {
+    "description": "Patchboard routing fabric maps signal channels between endpoints.",
+    "route_dictionary": {
+      "src": "<endpoint description>",
+      "src-channel": "string",
+      "dest": "<endpoint description>",
+      "dest-channel": "string",
+      "persistent": "boolean"
+    },
+    "routing_semantics": [
+      "Routing is destructive with respect to src outbox: messages are consumed or recycled after routing.",
+      "For each consumed message whose channel matches src-channel:",
+      "Duplicate the message envelope per matching destination.",
+      "Rewrite channel to dest-channel for that delivery.",
+      "Deliver the copied message to dest inbox.",
+      "signal and timestamp remain unchanged."
+    ],
+    "fanout_rule": "If multiple routes match, the message is delivered to each target (one copy per target).",
+    "design_principles": [
+      "Routing describes signal flow, not component relationships.",
+      "Channels represent wire labels.",
+      "Topology is external to components."
+    ]
+  },
+  "execution_model": {
+    "description": "Two-phase cooperative main loop.",
+    "main_loop": [
+      "RouteEverything()",
+      "ActivateOneTurnPerComponent()",
+      "repeat"
+    ],
+    "phase_1_RouteEverything": {
+      "summary": "Consume messages from outboxes and deliver to destination inboxes according to routes.",
+      "notes": [
+        "Messages emitted during activation in Phase 2 are not routed until the next cycle's Phase 1."
+      ]
+    },
+    "phase_2_ActivateOneTurnPerComponent": {
+      "summary": "Round-robin fairness: each component consumes at most one inbox message per cycle.",
+      "steps": [
+        "Iterate components in stable order.",
+        "If inbox non-empty: pop exactly one message.",
+        "Set g['component'] and g['msg'].",
+        "Invoke activation()."
+      ]
+    },
+    "properties": [
+      "Deterministic progression",
+      "Fairness between components",
+      "Avoid runaway cascades"
+    ],
+    "activation_rule": {
+      "rule": "Component eligible when inbox contains at least one message."
+    },
+    "noop_messages": {
+      "description": "Messages used solely to activate component turns.",
+      "use_cases": [
+        "Manual triggering",
+        "Timers",
+        "Maintenance pulses"
+      ]
+    }
+  },
+  "routing_algorithm": {
+    "name": "RouteEverything",
+    "description": "Consumes messages from source outboxes and delivers copies to destination inboxes according to route definitions. Runs as Phase 1 of each runtime cycle.",
+    "principles": [
+      "Routing is destructive with respect to source outboxes.",
+      "Routing is propagation, not execution.",
+      "All available messages are routed during this phase.",
+      "Messages emitted during activation are routed in the next cycle.",
+      "Signal payload is conceptually immutable.",
+      "Channel is rewritten during delivery."
+    ],
+    "high_level_steps": [
+      "Initialize global runtime mapping: objid = {}.",
+      "Resolve all active routes into runtime endpoints.",
+      "Assign runtime ids using id(obj) and populate objid[id(obj)] = obj.",
+      "Group routes by source endpoint id and source channel to form route_index.",
+      "Iterate source endpoint ids in stable order.",
+      "Retrieve source endpoint via objid[src_id].",
+      "Obtain source outbox using endpoint_behavior table.",
+      "While source outbox contains messages:",
+      "  Remove (consume) next message (FIFO).",
+      "  Lookup fanout using route_index[src_id][message.channel].",
+      "  For each matching destination:",
+      "    Create copy of message envelope.",
+      "    Rewrite channel to route.dest-channel.",
+      "    Deliver via destination endpoint delivery function.",
+      "After routing completes, clear objid mapping."
+    ],
+    "code": [
+      "objid = {}",
+      "route_index = {}",
+      "for route in active_routes:",
+      "    src_obj = resolve(route['src'])",
+      "    dest_obj = resolve(route['dest'])",
+      "    src_id = id(src_obj)",
+      "    dest_id = id(dest_obj)",
+      "    objid[src_id] = src_obj",
+      "    objid[dest_id] = dest_obj",
+      "    route_index.setdefault(src_id, {})",
+      "    route_index[src_id].setdefault(route['src-channel'], [])",
+      "    route_index[src_id][route['src-channel']].append((dest_id, route['dest-channel']))",
+      "for src_id, channel_map in route_index.items():",
+      "    src_endpoint = objid[src_id]",
+      "    src_behavior = endpoint_behavior[src_endpoint['type']]",
+      "    outbox = src_behavior['get_outbox'](src_endpoint)",
+      "    while outbox:",
+      "        msg = outbox.pop(0)",
+      "        fanout = channel_map.get(msg['channel'], [])",
+      "        for (dest_id, dest_channel) in fanout:",
+      "            dest_endpoint = objid[dest_id]",
+      "            dest_behavior = endpoint_behavior[dest_endpoint['type']]",
+      "            new_msg = {",
+      "                'channel': dest_channel,",
+      "                'signal': msg['signal'],",
+      "                'timestamp': msg['timestamp']",
+      "            }",
+      "            dest_behavior['deliver'](dest_endpoint, new_msg)",
+      "objid.clear()"
+    ],
+    "fanout_behavior": [
+      "If multiple routes reference the same src endpoint and src-channel, the message is duplicated once per matching route."
+    ],
+    "ordering_guarantees": [
+      "Messages are routed in FIFO order per source outbox.",
+      "Source endpoints are iterated in stable deterministic order.",
+      "Destination delivery ordering reflects route index ordering."
+    ],
+    "non_goals": [
+      "Routing fairness is not required; routing drains available messages completely.",
+      "Routing does not activate components.",
+      "Routing does not modify component internal state."
+    ]
+  },
+  "topology_management": {
+    "description": "Routing topology is live data but modified only at quiescence.",
+    "quiescence_definition": [
+      "All inboxes empty",
+      "All outboxes empty",
+      "Scheduler idle"
+    ],
+    "rules": [
+      "Routes may be added or removed only when system is quiescent.",
+      "Topology changes apply to future routing only."
+    ]
+  },
+  "architectural_qualities": {
+    "determinism": "Two-phase tick (route then activate) yields predictable propagation and reaction order.",
+    "fairness": "One-message-per-component-per-cycle prevents monopolization.",
+    "loose_coupling": "Patchboard isolates components.",
+    "composability": "External routes allow rewiring without modifying components.",
+    "semantic_locality": "Channels interpreted locally.",
+    "extensibility": "Endpoint abstraction supports in-memory and filesystem and (future) transports.",
+    "traceability": "Execution reducible to message flow.",
+    "debuggability": "Clear tick boundaries separate propagation from execution.",
+    "filetalk_alignment": "Same architecture spans memory and filesystem runtimes."
+  },
+  "emergent_properties": {
+    "system_rhythm": "Idle components activated by signal pulses.",
+    "patchboard_metaphor": "Physical patchboard with channel wires.",
+    "composability": "Signal topology editable without code changes.",
+    "live_evolution": "Behavior may change while runtime continues."
+  },
+  "filetalk_compatibility": {
+    "description": "Runtime may operate using filesystem-based message transport.",
+    "mechanism": [
+      "Inbox represented as inbox/ folder containing JSON messages.",
+      "Outbox represented as outbox/ folder containing JSON messages.",
+      "Routing logic identical; endpoint abstraction differs."
+    ],
+    "constraints": [
+      "Messages must be JSON serializable."
+    ]
+  }
+}
