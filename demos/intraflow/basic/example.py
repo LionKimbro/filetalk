@@ -1,5 +1,7 @@
+"""demos/intraflow/basic/example.py"""
+
 import tkinter as tk
-import intraflow.intraflow as flow
+import intraflow as flow
 
 
 # ================================================================
@@ -39,7 +41,7 @@ def entry_activation():
 
 
 def entry_emit(text):
-    flow.emit_signal("text", text)
+    flow.components["entry"]["outbox"].append(flow.make_message("text", text))
 
 
 #
@@ -50,7 +52,7 @@ def text_activation():
     if msg["channel"] == "set":
         w = widget("text")
         w.delete("1.0", tk.END)
-        w.insert(tk.END, msg["signal"])
+        w.insert(tk.END, str(msg.get("signal", "(None)")))
 
 
 #
@@ -62,7 +64,7 @@ def button_activation():
 
 
 def button_emit():
-    flow.emit_signal("clicked", None)
+    flow.components["button"]["outbox"].append(flow.make_message("clicked", None))
 
 
 #
@@ -108,7 +110,7 @@ def build_gui():
 
     # Bind events
     entry.bind("<Return>", lambda e: entry_emit(entry.get()))
-    text.bind("<Control-Return>", lambda e: flow.emit_signal("submit", text.get("1.0", tk.END)))
+    text.bind("<Control-Return>", lambda e: flow.components["text"]["outbox"].append(flow.make_message("submit", text.get("1.0", tk.END))))
     btn.config(command=button_emit)
 
 
@@ -126,17 +128,32 @@ def tick():
 # ================================================================
 
 def wire_default():
-    flow.address_components(("component", "entry"), ("component", "text"))
+    """
+
+        [entry:text]──────► [set:text]
+                     │
+                     └────► [log:logger]
+
+    
+      [button:clicked] ───► [log:logger]
+    
+    """
+
+    flow.address_components("entry", "text")
     flow.link_channels("text", "set")
     flow.commit_links()
 
-    flow.address_components(("component", "entry"), ("component", "logger"))
+    flow.address_components("entry", "logger")
     flow.link_channels("text", "log")
     flow.commit_links()
 
-    flow.address_components(("component", "button"), ("component", "logger"))
+    flow.address_components("button", "logger")
     flow.link_channels("clicked", "log")
     flow.commit_links()
+
+#    flow.address_components("button", "text")
+#    flow.link_channels("clicked", "set")
+#    flow.commit_links()
 
 
 # ================================================================
