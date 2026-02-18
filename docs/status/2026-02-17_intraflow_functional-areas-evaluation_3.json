@@ -1,0 +1,152 @@
+{
+  "document": {
+    "document_id": "intraflow.functional_areas_evaluation.v3",
+    "title": "IntraFlow Functional Areas Evaluation",
+    "purpose": "Assess major functional areas from design spec and indicate implementation completeness and quality using GREEN/YELLOW/RED status.",
+    "date": "2026-02-17"
+  },
+
+  "last-evaluated": "2026-02-17",
+
+  "architecture_note": "As of 2026-02-17 the implementation was substantially revised. The previous endpoint-polymorphic routing engine (normalize_endpoint_spec, endpoint_behavior dispatch table, typed drain/deliver helpers) was removed entirely. The runtime is now component-only: all connections are between component dicts. FileTalk, queue, and list behavior is expressed as adapter components via populate_filetalk(), populate_queue(), and populate_list(). The component creation console (declare_component, make_component, get_component, g['selected_component']) was added. delist_component() was added for route cleanup on unregister.",
+
+  "instructions for evaluator": [
+    "Update last-evaluated to the current date.",
+    "Evaluate each item, as if it had never been evaluated before.",
+    "Replace the 'status' with either RED (substantially missing), GREEN (fully functional), or YELLOW (partially implemented).",
+    "Replace the 'findings' section with whatever you would note about the system state."
+  ],
+
+  "evaluation": {
+
+    "connectable": {
+      "status": "GREEN",
+      "evaluate": [
+        "Can the programmer create routes incrementally -- from a source, a destination, and two channels?",
+        "Do all functions require 2 or fewer arguments?  (flags argument does not count against.)",
+        "Is there API documentation for all of this?"
+      ],
+      "findings": [
+        "Wiring console fully implements incremental route construction: address_source(x), address_dest(x), link_channels(src_ch, dest_ch), commit_links().",
+        "address_components(src, dest) is a convenience shortcut for addressing both in one call.",
+        "All wiring console functions accept 0-2 arguments.",
+        "add_route(route) accepts a single route dict.",
+        "persist_links() sets persistence flag before commit — zero arguments.",
+        "Source and dest remain latched between commits, allowing multiple commit_links() calls without re-addressing.",
+        "Wiring console accepts string IDs or component refs interchangeably — no special tuple syntax needed.",
+        "API documentation exists as docstrings on all public functions."
+      ]
+    },
+
+    "connection types": {
+      "status": "GREEN",
+      "evaluate": [
+        "Can you interact with components, both as src and dest?",
+        "Can you interact with lists, both as src and dest?",
+        "Can you interact with queues, both as src and dest?",
+        "Can you interact with folders on the filesystem, per filetalk system, both as src and dest?"
+      ],
+      "findings": [
+        "All connection types are now expressed as adapter components, not built-in endpoint types.",
+        "Components: fully functional as both src and dest. Tested with fanout, pipelines, single-hop delivery.",
+        "Lists: populate_list(L) assigns an activation that drains incoming list items to outbox, then drains inbox to list. Fully tested (5 tests).",
+        "Queues: populate_queue(q) assigns an activation that drains incoming queue items to outbox, then drains inbox to queue. Fully tested (4 tests).",
+        "FileTalk (filesystem): populate_filetalk(out_path, in_path) assigns an activation that reads .json files from in_path and writes inbox messages as .json to out_path. Fully tested (7 tests).",
+        "All adapter components are marked always_active=True and respond to both directions in one activation.",
+        "Order of operations: incoming (external -> outbox) is processed before outgoing (inbox -> external), so messages added in one activation are not immediately consumed in the same activation."
+      ]
+    },
+
+    "functional": {
+      "status": "GREEN",
+      "evaluate": [
+        "Can you actually successfully send messages through filetalk, in a variety of circumstances?"
+      ],
+      "findings": [
+        "Messages route correctly through single hops, multi-stage pipelines, and fanout (1-to-many).",
+        "Channel rewriting works correctly. Signal and timestamp are preserved through routing.",
+        "Destructive drain semantics confirmed — source outboxes are emptied after routing.",
+        "Messages on an unmatched channel are silently dropped (drained but not delivered).",
+        "Filesystem-based filetalk transport is fully functional via populate_filetalk adapter component.",
+        "123 tests pass covering all scenarios."
+      ]
+    },
+
+    "testable": {
+      "status": "GREEN",
+      "evaluate": [
+        "Can the system be reset at run-time, to a zero state, ready for repopulation?"
+      ],
+      "findings": [
+        "components.clear(), routes.clear(), and g/wire reset provide full zero-state reset.",
+        "Test suite uses a reset_state() helper called in setUp() of every test class — confirms clean reset works reliably.",
+        "123 tests run in sequence with no state leakage between them.",
+        "Tests located at tests/test_intraflow.py (flat file, avoids Python package name collision with src/intraflow)."
+      ]
+    },
+
+    "persistence": {
+      "status": "YELLOW",
+      "evaluate": [
+        "Is the system persistable?  Can the state of routes be saved to disk safely, and then restored?",
+        "Is the 'persistence' flagging system in the route dictionaries being respected?"
+      ],
+      "notes": ["Routes labelled non-persistent must not be persisted, or even attempted to persist."],
+      "findings": [
+        "Persistence flag is fully implemented in the route lifecycle.",
+        "add_route() defaults persistent to False. persist_links() sets it to True for wiring console batches.",
+        "add_route() validates that persistent routes have both src_id and dest_id present; raises ValueError otherwise.",
+        "List and queue adapter components have no stable ID in the route (src/dest are anonymous refs), so they cannot be marked persistent — which is correct behavior.",
+        "FileTalk and declared component routes can be made persistent if both sides have IDs.",
+        "Actual save-to-disk and restore-from-disk functionality is NOT yet implemented — the flagging infrastructure is in place but no serialization code exists."
+      ]
+    },
+
+    "running flexibility": {
+      "status": "YELLOW",
+      "evaluate": [
+        "Can the programmer run one iteration of the system?",
+        "Can the programmer run multiple iterations of the system?",
+        "Can the programmer let the system run until a global quit flag, or perhaps a Ctrl-Break is issued?",
+        "Is it documented anywhere, how to do all this?  Doesn't necessarily have to be in the package, though, preferably so."
+      ],
+      "findings": [
+        "run_cycle() executes exactly one cycle (route_everything + activate_one_turn_per_component). Works.",
+        "run(N) executes exactly N cycles. Works.",
+        "run() (or run(0)) runs until quiescent — at least one cycle always executes. Works.",
+        "No global quit flag or Ctrl-Break/signal handler support exists. The only stop condition is quiescence.",
+        "Docstrings document run(), run_cycle(), and is_quiescent(). No standalone usage guide."
+      ]
+    },
+
+    "topology_management_quiescence_rules": {
+      "status": "YELLOW",
+      "evaluate": [
+        "Are upgrades to the topology respecting quiescence rules?"
+      ],
+      "findings": [
+        "is_quiescent() exists and correctly checks all inboxes and outboxes across all registered components.",
+        "Spec states routes may only be added/removed at quiescence.",
+        "No runtime enforcement: add_route() and remove_route() do not check is_quiescent() before modifying topology.",
+        "delist_component(comp) was added: removes all routes referencing comp as src or dest. Called automatically by unregister_component().",
+        "Route cleanup on unregister is correct and tested. Quiescence enforcement on add/remove is still absent."
+      ]
+    },
+
+    "filetalk_alignment_and_transport_abstraction": {
+      "status": "GREEN",
+      "evaluate": [
+        "Does the system support filetalk input and output yet?",
+        "Does it work?  (Are there tests for it?)"
+      ],
+      "findings": [
+        "FileTalk transport implemented as an adapter component via populate_filetalk(out_path, in_path).",
+        "Incoming: reads .json files from in_path, parses, deletes on success, skips unparseable or non-.json files.",
+        "Outgoing: writes inbox messages as UTF-8 JSON with uuid-based filenames to out_path; creates directory if needed.",
+        "Timing guard: activation skips work if less than check_after_n_ms (default 250ms) has elapsed since last check.",
+        "Either path may be None; attempting to send with out_path=None raises ValueError.",
+        "7 dedicated tests: field setup, filesystem write, filesystem read, timing skip, None-path error, non-json skip, malformed-json skip."
+      ]
+    }
+  }
+}
