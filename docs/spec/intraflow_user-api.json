@@ -1,74 +1,551 @@
 {
   "document": {
-    "document_id": "intraflow.user_api.v1",
+    "document_id": "intraflow.user_api.v2",
     "title": "IntraFlow User-Facing Programming Interface",
-    "purpose": "Describe functions intended for programmers building systems on top of IntraFlow."
+    "version": "2",
+    "created": "2026-02-17",
+    "purpose": "Describe all functions, data structures, and usage patterns available to programmers building systems on top of IntraFlow.",
+    "scope": "Public and semi-public API of the intraflow package. Internal helpers (prefixed _) are included where needed for correctness."
   },
 
-  "development": {"chat-gpt": "https://chatgpt.com/c/6993d533-b158-8326-a2be-d0a6789b56b5"},
+  "conceptual_model": {
+    "overview": "IntraFlow is an in-process, deterministic, message-driven dataflow runtime. Components communicate only through messages. The routing topology is defined externally from the components themselves.",
+    "key_concepts": {
+      "component": "A dict-based processing unit with an inbox, an outbox, an activation function, and a state dict. Components never address each other directly.",
+      "message": "A dict with three fields: channel (string), signal (any JSON-serializable value), and timestamp (unix time as string). The channel determines routing.",
+      "route": "A binding that connects one component's outbox channel to another component's inbox channel. Routes may fanout (one source channel to many destinations).",
+      "cycle": "One execution step: first RouteEverything (drain outboxes, deliver to inboxes), then ActivateOneTurnPerComponent (each component with inbox messages runs once).",
+      "activation": "A zero-argument function called by the runtime when a component has a message (or is always_active). During activation, g['component'] and g['msg'] are set.",
+      "always_active": "A component flag. When True, the component's activation is called every cycle even if its inbox is empty (g['msg'] will be None).",
+      "adapter_component": "A component whose activation function bridges IntraFlow to an external medium (filesystem, queue, list). Created via populate_* functions.",
+      "quiescence": "The system is quiescent when all inboxes and outboxes are empty. run() (with no argument) runs until quiescent."
+    }
+  },
 
-  "conceptual_workflow": [
-    "Define activation functions.",
-    "Register components.",
-    "Connect components using routes.",
-    "Inject seed messages.",
-    "Run runtime cycles."
+  "global_state": {
+    "description": "IntraFlow maintains module-level mutable state. All state can be reset by clearing these objects directly — useful for testing.",
+    "objects": {
+      "g": {
+        "type": "dict",
+        "description": "Execution context. Set by the runtime during each activation.",
+        "fields": {
+          "g['component']": "The component dict currently being activated. None between activations.",
+          "g['msg']": "The message dict popped from the component's inbox for this activation. None if always_active and inbox is empty. None between activations.",
+          "g['selected_component']": "The most recently declared or created component. Used by the component creation console and populate_* functions."
+        }
+      },
+      "components": {
+        "type": "dict",
+        "description": "Registry of all declared components. Maps component_id (string) to component dict.",
+        "notes": ["Only components registered via declare_component() or register_component() appear here.", "Anonymous components (make_component()) are not registered."]
+      },
+      "routes": {
+        "type": "list",
+        "description": "The active routing table. Each entry is a route dict. Ordering is not semantically significant.",
+        "notes": ["Modified by add_route(), remove_route(), clear_routes(), and delist_component()."]
+      },
+      "wire": {
+        "type": "dict",
+        "description": "Wiring console state. Holds the current source, destination, persist flag, and staged channel links.",
+        "fields": {
+          "wire['src']": "Current source — string ID or component ref. Set by address_source().",
+          "wire['dest']": "Current destination — string ID or component ref. Set by address_dest().",
+          "wire['persist']": "Boolean. True if next committed routes should be marked persistent.",
+          "wire['channel-links']": "List of (src_channel, dest_channel) tuples staged by link_channels()."
+        }
+      }
+    },
+    "reset_pattern": {
+      "description": "To reset all state (e.g. between tests), call reset(). This is the preferred approach.",
+      "function": "reset()",
+      "notes": ["reset() is most useful in test setUp() methods to guarantee a clean slate before each test case."]
+    }
+  },
+
+  "canonical_data_structures": {
+    "message": {
+      "description": "The unit of communication between components.",
+      "fields": {
+        "channel": "String. Determines which routes apply.",
+        "signal": "Any JSON-serializable value. The payload.",
+        "timestamp": "String. Unix time as a decimal float string, e.g. '1771392012.317115'."
+      },
+      "construction": "Use make_message(channel, signal). Do not construct manually during routing.",
+      "example": {"channel": "out", "signal": {"text": "hello"}, "timestamp": "1771392012.317115"}
+    },
+    "component": {
+      "description": "The canonical IntraFlow component dict. Created by _make_component_dict().",
+      "fields": {
+        "type": "Always 'INTRAFLOW-COMPONENT'.",
+        "inbox": "List of message dicts awaiting processing. Runtime pops from index 0.",
+        "outbox": "List of message dicts awaiting routing. Runtime drains this each cycle.",
+        "activation": "Zero-argument callable. Called by the runtime each cycle the component is active.",
+        "state": "Dict. Arbitrary programmer-controlled state. Persists across activations.",
+        "channels": "Dict with 'in' and 'out' sub-dicts. Reserved for future introspection.",
+        "always_active": "Boolean. If True, activation is called even with an empty inbox.",
+        "id": "String. Present only on registered components (set by declare_component()).",
+        "component_type": "String. Present on adapter components: 'adapter'.",
+        "adapter_kind": "String. Present on adapter components: 'filetalk', 'queue', or 'list'."
+      }
+    },
+    "route": {
+      "description": "A compiled routing rule. Keys are always in canonical field order.",
+      "field_order": ["src_id", "src", "src-channel", "dest_id", "dest", "dest-channel", "persistent"],
+      "fields": {
+        "src_id": "String or None. ID of the source component, if declared.",
+        "src": "Component dict ref. The live source object.",
+        "src-channel": "String. The channel on the source outbox to match.",
+        "dest_id": "String or None. ID of the destination component, if declared.",
+        "dest": "Component dict ref. The live destination object.",
+        "dest-channel": "String. The channel assigned to the message when delivered to the destination inbox.",
+        "persistent": "Boolean. If True, this route is eligible for save/restore (both src_id and dest_id must be set)."
+      }
+    }
+  },
+
+  "functions": {
+
+    "message_functions": {
+      "description": "Create messages and emit signals from within activations.",
+
+      "make_message": {
+        "signature": "make_message(channel, signal)",
+        "returns": "A new message dict with channel, signal, and timestamp.",
+        "description": "Construct a message envelope. Use for manual injection into inboxes or outboxes. Not required within activations — use emit_signal() instead.",
+        "notes": ["signal is stored by reference, not copied.", "timestamp is set at call time."]
+      },
+
+      "emit_signal": {
+        "signature": "emit_signal(channel, signal)",
+        "returns": "None",
+        "description": "Create a message and append it to the current component's outbox. Valid only during activation (g['component'] must be set).",
+        "notes": [
+          "The emitted message is not routed until the next cycle's RouteEverything phase.",
+          "Equivalent to: g['component']['outbox'].append(make_message(channel, signal))."
+        ]
+      }
+    },
+
+    "component_creation_console": {
+      "description": "Functions for creating and selecting components. All creation functions set g['selected_component'], which is consumed by populate_* functions.",
+
+      "declare_component": {
+        "signature": "declare_component(component_id)",
+        "returns": "The new component dict.",
+        "description": "Create a named component, register it in components, and select it.",
+        "notes": [
+          "Raises ValueError if component_id is already registered.",
+          "Sets g['selected_component'] to the new component.",
+          "The id field is stored on the component dict."
+        ]
+      },
+
+      "make_component": {
+        "signature": "make_component()",
+        "returns": "The new component dict.",
+        "description": "Create an anonymous (unregistered) component and select it.",
+        "notes": [
+          "The component is NOT added to components.",
+          "Sets g['selected_component'] to the new component.",
+          "Useful for adapter components that don't need a stable ID."
+        ]
+      },
+
+      "get_component": {
+        "signature": "get_component()",
+        "returns": "g['selected_component'] — the most recently created or declared component, or None.",
+        "description": "Return the currently selected component."
+      },
+
+      "register_component": {
+        "signature": "register_component(component_id, activation)",
+        "returns": "The new component dict.",
+        "description": "Convenience: declare_component(component_id) then assign activation. The most common setup function.",
+        "notes": ["Raises ValueError if component_id is already registered."]
+      },
+
+      "unregister_component": {
+        "signature": "unregister_component(component_id)",
+        "returns": "None",
+        "description": "Remove a component from the registry and delist all routes that reference it.",
+        "notes": [
+          "Calls delist_component() on the removed component.",
+          "Safe to call with an unknown ID — no error is raised."
+        ]
+      },
+
+      "delist_component": {
+        "signature": "delist_component(comp)",
+        "returns": "None",
+        "description": "Remove all routes from the routing table that reference comp as either source or destination.",
+        "notes": [
+          "Uses identity comparison (is), not equality.",
+          "Called automatically by unregister_component().",
+          "Can be called directly for anonymous components (e.g. adapter components being torn down).",
+          "Safe to call when comp has no routes — no error is raised."
+        ]
+      },
+
+      "_make_component_dict": {
+        "signature": "_make_component_dict()",
+        "returns": "A fresh component dict with all canonical fields initialized.",
+        "description": "Internal. Creates the canonical component structure. Each call returns a new dict with independent inbox and outbox lists.",
+        "notes": ["Prefixed _ but importable. Useful in tests and introspection."]
+      }
+    },
+
+    "component_population_adapters": {
+      "description": "Functions that assign an activation function to the selected component (g['selected_component']), turning it into an adapter that bridges IntraFlow to an external medium. All adapter components are marked always_active=True.",
+      "ordering_note": "Within each activation, incoming (external -> outbox) is processed before outgoing (inbox -> external). This ensures that items deposited in the same cycle are not immediately consumed back.",
+
+      "populate_filetalk": {
+        "signature": "populate_filetalk(intraflow_to_filesystem_path, filesystem_to_intraflow_path)",
+        "returns": "None",
+        "description": "Configure the selected component as a FileTalk filesystem adapter.",
+        "parameters": {
+          "intraflow_to_filesystem_path": "Directory path for outgoing messages (inbox -> filesystem). May be None if outgoing direction is not needed.",
+          "filesystem_to_intraflow_path": "Directory path for incoming messages (filesystem -> outbox). May be None if incoming direction is not needed."
+        },
+        "behavior": {
+          "timing_guard": "Activation is a no-op if less than check_after_n_ms (default 250ms) has elapsed since the last check.",
+          "incoming": "Reads all .json files from filesystem_to_intraflow_path, parses them as message dicts, appends to outbox, and deletes the source files. Non-.json files and malformed JSON are silently skipped.",
+          "outgoing": "Pops all messages from inbox and writes each as a UUID-named .json file in intraflow_to_filesystem_path. Creates the directory if needed. Raises ValueError if out_path is None and inbox is non-empty."
+        },
+        "state_fields": {
+          "intraflow_to_filesystem_path": "Outgoing directory path.",
+          "filesystem_to_intraflow_path": "Incoming directory path.",
+          "check_after_n_ms": "Polling interval in milliseconds (default 250).",
+          "last_checked_timestamp": "Unix timestamp (ms) of the last check."
+        }
+      },
+
+      "populate_queue": {
+        "signature": "populate_queue(queue)",
+        "returns": "None",
+        "description": "Configure the selected component as a queue adapter. Bridges IntraFlow messages to/from a queue.Queue (or compatible) object.",
+        "parameters": {
+          "queue": "A queue.Queue instance (or any object with put(), get_nowait(), and empty() methods)."
+        },
+        "behavior": {
+          "incoming": "Drains all items from the queue (via get_nowait()) into outbox.",
+          "outgoing": "Pops all messages from inbox and puts each into the queue (via put())."
+        }
+      },
+
+      "populate_list": {
+        "signature": "populate_list(L)",
+        "returns": "None",
+        "description": "Configure the selected component as a list adapter. The list acts as a FIFO buffer shared with external code.",
+        "parameters": {
+          "L": "A Python list. Index 0 is treated as the front of the queue."
+        },
+        "behavior": {
+          "incoming": "Pops all items from L (from index 0) and appends to outbox.",
+          "outgoing": "Pops all messages from inbox and appends to L."
+        }
+      }
+    },
+
+    "route_management": {
+      "description": "Direct manipulation of the routing table.",
+
+      "add_route": {
+        "signature": "add_route(route)",
+        "returns": "None",
+        "description": "Resolve, validate, and insert a route into the routing table.",
+        "parameter_route": {
+          "description": "A dict that may contain any combination of src, src_id, dest, dest_id plus src-channel, dest-channel, and persistent.",
+          "resolution_rules": [
+            "If src is None, src_id is used to look up the component ref from components. Raises ValueError if not found.",
+            "If src is provided and src_id is also provided, they must refer to the same component. Raises ValueError on mismatch.",
+            "Same rules apply to dest and dest_id.",
+            "If src has no src_id, src_id defaults to None.",
+            "If dest has no dest_id, dest_id defaults to None.",
+            "persistent defaults to False."
+          ]
+        },
+        "persistence_validation": "If persistent is True, both src_id and dest_id must be non-None. Raises ValueError otherwise.",
+        "notes": [
+          "Route keys are reordered to canonical field order in-place before insertion.",
+          "Duplicate routes are not detected — callers must manage uniqueness."
+        ]
+      },
+
+      "remove_route": {
+        "signature": "remove_route(src, src_channel, dest, dest_channel)",
+        "returns": "True if a route was removed, False if no matching route was found.",
+        "description": "Remove the first route matching all four criteria. Uses identity comparison (is) for src and dest.",
+        "notes": ["Only the first matching route is removed. If duplicate routes exist, call again to remove subsequent matches."]
+      },
+
+      "clear_routes": {
+        "signature": "clear_routes()",
+        "returns": "None",
+        "description": "Remove all routes from the routing table."
+      },
+
+      "order_route": {
+        "signature": "order_route(route)",
+        "returns": "None",
+        "description": "Reorder route dict keys in-place to canonical field order. Extra keys are appended after the canonical ones.",
+        "notes": [
+          "Called automatically by add_route() and commit_links().",
+          "Canonical order: src_id, src, src-channel, dest_id, dest, dest-channel, persistent.",
+          "Idempotent."
+        ]
+      },
+
+      "_ROUTE_FIELD_ORDER": {
+        "type": "list",
+        "value": ["src_id", "src", "src-channel", "dest_id", "dest", "dest-channel", "persistent"],
+        "description": "The canonical key order for route dicts."
+      }
+    },
+
+    "wiring_console": {
+      "description": "A stateful, imperative interface for building routes incrementally. Source and destination remain latched between commit_links() calls.",
+
+      "address_source": {
+        "signature": "address_source(x)",
+        "returns": "None",
+        "description": "Set the source for subsequent wiring operations. Also resets persist flag and staged channel links.",
+        "parameter_x": "A string component ID or a component dict ref."
+      },
+
+      "address_dest": {
+        "signature": "address_dest(x)",
+        "returns": "None",
+        "description": "Set the destination for subsequent wiring operations.",
+        "parameter_x": "A string component ID or a component dict ref."
+      },
+
+      "address_components": {
+        "signature": "address_components(src, dest)",
+        "returns": "None",
+        "description": "Convenience: address_source(src) then address_dest(dest)."
+      },
+
+      "persist_links": {
+        "signature": "persist_links()",
+        "returns": "None",
+        "description": "Mark routes created by the next commit_links() call as persistent. The flag is cleared after commit_links() completes.",
+        "notes": ["Persistent routes require both src and dest to have known IDs."]
+      },
+
+      "link_channels": {
+        "signature": "link_channels(src_channel, dest_channel)",
+        "returns": "None",
+        "description": "Stage a channel mapping between the current source and destination.",
+        "notes": [
+          "Raises ValueError if no source or destination is currently addressed.",
+          "Multiple calls stage multiple mappings; all are committed together by commit_links()."
+        ]
+      },
+
+      "commit_links": {
+        "signature": "commit_links()",
+        "returns": "None",
+        "description": "Finalize all staged channel mappings by creating routes via add_route(). Clears staged links and persist flag afterward. Preserves the current src/dest addressing context.",
+        "notes": [
+          "Raises ValueError if src, dest, or channel links are not set.",
+          "Raises ValueError if a string ID cannot be resolved in components.",
+          "src_id and dest_id are populated from string IDs; component ref sources/dests populate them from the component's id field if available."
+        ]
+      }
+    },
+
+    "runtime_execution": {
+      "description": "Functions for running the IntraFlow execution loop.",
+
+      "run_cycle": {
+        "signature": "run_cycle()",
+        "returns": "None",
+        "description": "Execute one deterministic cycle: route_everything() then activate_one_turn_per_component()."
+      },
+
+      "run": {
+        "signature": "run(cycles=0)",
+        "returns": "None",
+        "description": "Execute the runtime loop.",
+        "modes": {
+          "run(N) where N > 0": "Execute exactly N cycles.",
+          "run() or run(0)": "Execute cycles until the system is quiescent. Always runs at least one cycle before checking."
+        }
+      },
+
+      "is_quiescent": {
+        "signature": "is_quiescent()",
+        "returns": "True if all inboxes and outboxes of all registered components are empty.",
+        "description": "Check whether the system has no messages in flight.",
+        "notes": ["A system with always_active components can reach quiescence if those components never emit."]
+      },
+
+      "route_everything": {
+        "signature": "route_everything()",
+        "returns": "None",
+        "description": "Phase 1 of the cycle. Drains all component outboxes and delivers routed messages to destination inboxes.",
+        "behavior": [
+          "Builds a routing index from the routes table, grouped by source component and channel.",
+          "For each source with registered routes, atomically replaces its outbox with an empty list and processes each drained message.",
+          "Each message is fanned out to all destinations matching its channel.",
+          "Delivered messages are new dicts with the destination channel, same signal, and same timestamp.",
+          "Messages on channels with no routes are silently dropped.",
+          "Components not referenced in any route have their outboxes left untouched."
+        ]
+      },
+
+      "reset": {
+        "signature": "reset()",
+        "returns": "None",
+        "description": "Reset all IntraFlow state to zero: clears components, routes, g, and wire. Most useful for testing.",
+        "notes": [
+          "Equivalent to manually clearing each global, but provided as a convenience so callers do not need to import the individual state objects.",
+          "Typical use: call reset() in setUp() before each test case."
+        ]
+      },
+
+      "activate_one_turn_per_component": {
+        "signature": "activate_one_turn_per_component()",
+        "returns": "None",
+        "description": "Phase 2 of the cycle. Activates each registered component at most once.",
+        "behavior": [
+          "Iterates components in registration order.",
+          "A component is activated if its inbox is non-empty OR its always_active flag is True.",
+          "If the inbox is non-empty, one message is popped from index 0 and set as g['msg'].",
+          "If always_active and inbox is empty, g['msg'] is set to None.",
+          "g['component'] is set to the component for the duration of the activation.",
+          "g['component'] and g['msg'] are cleared to None after each activation."
+        ]
+      }
+    }
+  },
+
+  "activation_context": {
+    "description": "What is available to a component's activation function during execution.",
+    "available": {
+      "g['component']": "The component dict being activated. Access state via g['component']['state'].",
+      "g['msg']": "The message dict triggering this activation, or None (if always_active and inbox was empty).",
+      "emit_signal(channel, signal)": "Emit a message to this component's outbox for routing next cycle.",
+      "g['component']['state']": "Persistent state dict. Read and write freely."
+    },
+    "not_available_during_activation": [
+      "Direct access to other components' state (by design — coupling must go through messages).",
+      "Modifying the routing table (technically possible but violates quiescence rules)."
+    ],
+    "example": [
+      "def my_activation():",
+      "    msg = g['msg']",
+      "    if msg is None:",
+      "        return  # always_active tick, nothing to process",
+      "    value = msg['signal']['value']",
+      "    g['component']['state']['last'] = value",
+      "    emit_signal('result', {'value': value * 2})"
+    ]
+  },
+
+  "usage_patterns": {
+
+    "minimal_setup": {
+      "description": "The simplest working system: one producer, one consumer.",
+      "steps": [
+        "Define activation functions.",
+        "Register components.",
+        "Wire channels.",
+        "Inject a seed message to trigger the producer.",
+        "Run."
+      ],
+      "example": [
+        "def producer():",
+        "    emit_signal('out', {'text': 'hello'})",
+        "",
+        "def consumer():",
+        "    g['component']['state']['received'] = g['msg']['signal']",
+        "",
+        "register_component('producer', producer)",
+        "register_component('consumer', consumer)",
+        "address_components('producer', 'consumer')",
+        "link_channels('out', 'in')",
+        "commit_links()",
+        "components['producer']['inbox'].append(make_message('kick', None))",
+        "run()"
+      ]
+    },
+
+    "adapter_component_setup": {
+      "description": "Use an in-memory list as an I/O bridge.",
+      "example": [
+        "input_buffer = []",
+        "output_buffer = []",
+        "",
+        "declare_component('input')",
+        "populate_list(input_buffer)",
+        "",
+        "declare_component('output')",
+        "populate_list(output_buffer)",
+        "",
+        "register_component('processor', lambda: emit_signal('out', g['msg']['signal']))",
+        "",
+        "address_components('input', 'processor')",
+        "link_channels('in', 'in')",
+        "commit_links()",
+        "",
+        "address_components('processor', 'output')",
+        "link_channels('out', 'in')",
+        "commit_links()",
+        "",
+        "input_buffer.append(make_message('in', {'x': 42}))",
+        "run(cycles=3)"
+      ]
+    },
+
+    "fanout": {
+      "description": "One source channel routing to multiple destinations.",
+      "example": [
+        "address_components('source', 'dest_a')",
+        "link_channels('out', 'in')",
+        "commit_links()",
+        "",
+        "address_components('source', 'dest_b')",
+        "link_channels('out', 'in')",
+        "commit_links()"
+      ]
+    },
+
+    "persistent_route": {
+      "description": "Mark a route as eligible for future serialization.",
+      "example": [
+        "address_components('producer', 'consumer')",
+        "persist_links()",
+        "link_channels('out', 'in')",
+        "commit_links()"
+      ],
+      "notes": ["Both components must be declared via declare_component() (not make_component()) for persistence to be allowed."]
+    },
+
+    "component_teardown": {
+      "description": "Remove a component and clean up all its routes.",
+      "example": [
+        "unregister_component('my_component')  # also calls delist_component internally"
+      ],
+      "notes": [
+        "For anonymous (unregistered) components, call delist_component(comp_ref) directly, then discard the ref."
+      ]
+    }
+  },
+
+  "design_principles": [
+    "Components never address each other directly — all coupling is through the routing table.",
+    "The routing table is external to components and can be changed without modifying component code.",
+    "The two-phase cycle (route then activate) ensures deterministic, turn-based execution.",
+    "Adapter components (filetalk, queue, list) bridge IntraFlow to external systems using the same component interface — no special endpoint types exist in the runtime.",
+    "State leakage between tests is prevented by resetting the module-level globals directly."
   ],
 
-  "user_functions": {
-
-    "register_component": {
-      "signature": "register_component(component_id, activation)",
-      "description": "Create and register a machine-like component.",
-      "usage_notes": [
-        "activation is called when a message arrives.",
-        "Component state stored in g['component']['state']."
-      ]
-    },
-
-    "add_route": {
-      "signature": "add_route(src, src_channel, dest, dest_channel)",
-      "description": "Connect signal lanes between endpoints via patchboard routing.",
-      "usage_notes": [
-        "Topology is external to components.",
-        "Multiple routes create fanout."
-      ]
-    },
-
-    "emit_signal": {
-      "signature": "emit_signal(channel, signal)",
-      "description": "Emit message during activation.",
-      "usage_notes": [
-        "Only valid during activation.",
-        "Routing occurs next cycle."
-      ]
-    },
-
-    "make_message": {
-      "signature": "make_message(channel, signal)",
-      "description": "Construct message envelopes for manual injection."
-    },
-
-    "run": {
-      "signature": "run(cycles=0)",
-      "description": "Execute runtime.",
-      "usage_notes": [
-        "cycles>0 executes fixed ticks.",
-        "cycles=0 runs until quiescent."
-      ]
-    },
-
-    "run_cycle": {
-      "signature": "run_cycle()",
-      "description": "Execute single deterministic tick."
-    }
-
-  },
-
-  "recommended_usage_pattern": [
-    "Define activation functions using g['msg'].",
-    "Use emit_signal rather than writing directly to outbox.",
-    "Avoid modifying topology while running.",
-    "Use seed messages to start behavior."
+  "non_goals": [
+    "Thread safety — IntraFlow is single-threaded by design.",
+    "Persistence of routing tables to disk — the persistent flag marks routes as eligible, but serialization is not yet implemented.",
+    "Quiescence enforcement — add_route() and remove_route() do not guard against mid-cycle topology changes.",
+    "Exactly-once delivery guarantees.",
+    "Priority queues or ordered activation beyond registration order."
   ]
 }

@@ -33,6 +33,23 @@ routes = []       # list of route dicts
 
 
 # =============================================================================
+# RESET
+# =============================================================================
+
+def reset():
+    """Reset all IntraFlow state to zero. Safe to call between test cases or system restarts."""
+    g["component"] = None
+    g["msg"] = None
+    g["selected_component"] = None
+    components.clear()
+    routes.clear()
+    wire["src"] = None
+    wire["dest"] = None
+    wire["persist"] = False
+    wire["channel-links"] = []
+
+
+# =============================================================================
 # MESSAGE MODEL
 # =============================================================================
 

@@ -17,20 +17,8 @@ from intraflow import (
     link_channels, commit_links,
     route_everything, activate_one_turn_per_component,
     run_cycle, is_quiescent, run,
+    reset,
 )
-
-
-def reset_state():
-    """Reset all module-level mutable state between tests."""
-    g["component"] = None
-    g["msg"] = None
-    g["selected_component"] = None
-    components.clear()
-    routes.clear()
-    wire["src"] = None
-    wire["dest"] = None
-    wire["persist"] = False
-    wire["channel-links"] = []
 
 
 # =============================================================================
@@ -64,7 +52,7 @@ class TestMakeMessage(unittest.TestCase):
 
 class TestEmitSignal(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_appends_to_current_component_outbox(self):
         comp = _make_component_dict()
@@ -112,7 +100,7 @@ class TestMakeComponentDict(unittest.TestCase):
 
 class TestDeclareComponent(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_registers_in_components(self):
         comp = declare_component("foo")
@@ -149,7 +137,7 @@ class TestDeclareComponent(unittest.TestCase):
 
 class TestMakeComponentAnon(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_not_added_to_registry(self):
         make_component()
@@ -170,7 +158,7 @@ class TestMakeComponentAnon(unittest.TestCase):
 
 class TestGetComponent(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_returns_selected_component(self):
         comp = declare_component("foo")
@@ -186,7 +174,7 @@ class TestGetComponent(unittest.TestCase):
 
 class TestRegisterComponent(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_registers_and_assigns_activation(self):
         fn = lambda: None
@@ -206,7 +194,7 @@ class TestRegisterComponent(unittest.TestCase):
 
 class TestUnregisterComponent(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_removes_from_registry(self):
         declare_component("foo")
@@ -245,7 +233,7 @@ class TestUnregisterComponent(unittest.TestCase):
 
 class TestDelistComponent(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_removes_routes_where_comp_is_src(self):
         src = declare_component("src")
@@ -310,7 +298,7 @@ class TestDelistComponent(unittest.TestCase):
 
 class TestPopulateQueue(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def _activate(self, comp):
         g["component"] = comp
@@ -367,7 +355,7 @@ class TestPopulateQueue(unittest.TestCase):
 
 class TestPopulateList(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def _activate(self, comp):
         g["component"] = comp
@@ -430,7 +418,7 @@ class TestPopulateList(unittest.TestCase):
 
 class TestPopulateFiletalk(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def _activate(self, comp):
         g["component"] = comp
@@ -568,7 +556,7 @@ class TestOrderRoute(unittest.TestCase):
 
 class TestAddRoute(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_resolve_src_by_src_id(self):
         src = declare_component("src")
@@ -685,7 +673,7 @@ class TestAddRoute(unittest.TestCase):
 
 class TestRemoveRoute(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_removes_matching_route(self):
         src = declare_component("src")
@@ -725,7 +713,7 @@ class TestRemoveRoute(unittest.TestCase):
 
 class TestClearRoutes(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_clears_all_routes(self):
         src = declare_component("src")
@@ -742,7 +730,7 @@ class TestClearRoutes(unittest.TestCase):
 
 class TestWiringConsolePrimitives(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_address_source_sets_wire_src(self):
         comp = declare_component("src")
@@ -801,7 +789,7 @@ class TestWiringConsolePrimitives(unittest.TestCase):
 
 class TestCommitLinks(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_creates_route_from_string_ids(self):
         src = declare_component("src")
@@ -926,7 +914,7 @@ class TestCommitLinks(unittest.TestCase):
 
 class TestRouteEverything(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_delivers_message_to_dest_inbox(self):
         src = declare_component("src")
@@ -1013,7 +1001,7 @@ class TestRouteEverything(unittest.TestCase):
 
 class TestActivateOneTurnPerComponent(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_activates_component_with_inbox(self):
         activated = []
@@ -1100,7 +1088,7 @@ class TestActivateOneTurnPerComponent(unittest.TestCase):
 
 class TestIsQuiescent(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_true_with_no_components(self):
         self.assertTrue(is_quiescent())
@@ -1127,7 +1115,7 @@ class TestIsQuiescent(unittest.TestCase):
 
 class TestRunCycle(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_routes_then_activates_in_order(self):
         events = []
@@ -1147,7 +1135,7 @@ class TestRunCycle(unittest.TestCase):
 
 class TestRun(unittest.TestCase):
     def setUp(self):
-        reset_state()
+        reset()
 
     def test_fixed_cycles_runs_exact_count(self):
         count = []
