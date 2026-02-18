@@ -1,6 +1,6 @@
 {
   "document": {
-    "document_id": "patchboard.spec.messages.file-transport.v1",
+    "document-id": "patchboard.spec.messages.file-transport.v1",
     "title": "Patchboard File Transport Profile",
     "purpose": "Documents how Patchboard messages transport on the filesystem."
   },

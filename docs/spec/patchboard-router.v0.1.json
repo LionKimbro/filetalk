@@ -1,7 +1,7 @@
 {
   "document": {
+    "document-id": "spec.filetalk-patchboard-router",
     "title": "Patchboard Router All-Aspects Design Document",
-    "document_id": "spec.filetalk-patchboard-router",
     "version": "0.1",
     "created": "2026-02-02",
     "epoch": "filetalk_2025_epoch_5",

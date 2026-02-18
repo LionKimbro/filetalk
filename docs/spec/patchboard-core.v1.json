@@ -1,6 +1,6 @@
 {
   "document": {
-    "document_id": "patchboard.spec.messages.core.v1",
+    "document-id": "patchboard.spec.messages.core.v1",
     "title": "Patchboard Core Message Specification",
     "purpose": "Define the Patchboard system, and the core Patchboard message in particular."
   },
