@@ -16,12 +16,11 @@ ui = {
 
 
 # ================================================================
-# GUI HELPERS
+# WIDGET HELPERS
 # ================================================================
 
 def widget(name):
     return ui["widgets"][name]
-
 
 def add_widget(name, w):
     ui["widgets"][name] = w
@@ -29,57 +28,118 @@ def add_widget(name, w):
 
 
 # ================================================================
-# COMPONENTS
+# WIDGET-TO-COMPONENT REGISTRY
 # ================================================================
 
-#
-# ENTRY COMPONENT
-#
+_widget_components = {}  # id(widget) -> list of component dicts
+
+def register_widget_component(w, comp):
+    _widget_components.setdefault(id(w), []).append(comp)
+
+def get_components_for_widget(w):
+    return _widget_components.get(id(w), [])
+
+
+# ================================================================
+# EVENT HANDLING
+# ================================================================
+
+def handle_event(evt, comp, fn):
+    """Set IntraFlow context for a GUI event, call fn(), then clear context."""
+    flow.g["evt"] = evt
+    flow.g["component"] = comp
+    fn()
+    flow.g["component"] = None
+    flow.g["evt"] = None
+
+
+# ================================================================
+# ACTIVATION FUNCTIONS
+# ================================================================
+
 def entry_activation():
-    # No incoming messages required; activation is event driven
-    pass
+    pass  # Entry only emits; it doesn't process incoming messages
 
 
-def entry_emit(text):
-    flow.components["entry"]["outbox"].append(flow.make_message("text", text))
-
-
-#
-# TEXT DISPLAY COMPONENT
-#
 def text_activation():
     msg = flow.g["msg"]
     if msg["channel"] == "set":
-        w = widget("text")
+        w = flow.g["component"]["state"]["widget"]
         w.delete("1.0", tk.END)
         w.insert(tk.END, str(msg.get("signal", "(None)")))
 
 
-#
-# BUTTON COMPONENT
-#
 def button_activation():
-    # Button only emits from GUI event
-    pass
-
-
-def button_emit():
-    flow.components["button"]["outbox"].append(flow.make_message("clicked", None))
-
-
-#
-# LOGGER COMPONENT (draw messages onto canvas)
-#
-def logger_activation():
     msg = flow.g["msg"]
+    if msg["channel"] == "label":
+        w = flow.g["component"]["state"]["widget"]
+        w.config(text=str(msg["signal"]))
 
-    c = widget("canvas")
-    text = f"{msg['channel']}: {msg['signal']}"
-    c.create_text(10, logger_activation.y, anchor="nw", text=text)
 
-    logger_activation.y += 18
+def logger_activation():
+    comp = flow.g["component"]
+    msg = flow.g["msg"]
+    canvas = comp["state"]["widget"]
+    y = comp["state"]["y"]
+    canvas.create_text(10, y, anchor="nw", text=f"{msg['channel']}: {msg['signal']}")
+    comp["state"]["y"] += 18
 
-logger_activation.y = 10
+
+# ================================================================
+# EVENT HANDLER FUNCTIONS
+# ================================================================
+
+def entry_return_handler():
+    w = flow.g["component"]["state"]["widget"]
+    flow.emit_signal("text", w.get())
+
+
+def button_click_handler():
+    flow.emit_signal("clicked", None)
+
+
+# ================================================================
+# COMPONENT FACTORIES
+# ================================================================
+
+def make_entry(component_id, parent):
+    w = tk.Entry(parent)
+    w.pack(fill="x")
+    add_widget(component_id, w)
+    comp = flow.register_component(component_id, entry_activation)
+    comp["state"]["widget"] = w
+    register_widget_component(w, comp)
+    w.bind("<Return>", lambda evt: handle_event(evt, comp, entry_return_handler))
+    return comp
+
+
+def make_text(component_id, parent):
+    w = tk.Text(parent, height=5)
+    w.pack(fill="x")
+    add_widget(component_id, w)
+    comp = flow.register_component(component_id, text_activation)
+    comp["state"]["widget"] = w
+    register_widget_component(w, comp)
+    return comp
+
+
+def make_button(component_id, parent, label="Emit Click"):
+    comp = flow.register_component(component_id, button_activation)
+    w = tk.Button(parent, text=label,
+                  command=lambda: handle_event(None, comp, button_click_handler))
+    w.pack()
+    add_widget(component_id, w)
+    comp["state"]["widget"] = w
+    register_widget_component(w, comp)
+    return comp
+
+
+def make_logger(component_id, canvas):
+    comp = flow.register_component(component_id, logger_activation)
+    comp["state"]["widget"] = canvas
+    comp["state"]["y"] = 10
+    register_widget_component(canvas, comp)
+    return comp
 
 
 # ================================================================
@@ -94,24 +154,13 @@ def build_gui():
     canvas.pack(fill="both", expand=True)
 
     ui["root"] = root
+    ui["canvas"] = canvas
     add_widget("canvas", canvas)
 
-    entry = tk.Entry(root)
-    entry.pack(fill="x")
-    add_widget("entry", entry)
-
-    text = tk.Text(root, height=5)
-    text.pack(fill="x")
-    add_widget("text", text)
-
-    btn = tk.Button(root, text="Emit Click")
-    btn.pack()
-    add_widget("button", btn)
-
-    # Bind events
-    entry.bind("<Return>", lambda e: entry_emit(entry.get()))
-    text.bind("<Control-Return>", lambda e: flow.components["text"]["outbox"].append(flow.make_message("submit", text.get("1.0", tk.END))))
-    btn.config(command=button_emit)
+    make_entry("entry", root)
+    make_text("text", root)
+    make_button("button", root)
+    make_logger("logger", canvas)
 
 
 # ================================================================
@@ -134,11 +183,10 @@ def wire_default():
                      │
                      └────► [log:logger]
 
-    
-      [button:clicked] ───► [log:logger]
-    
-    """
 
+      [button:clicked] ───► [log:logger]
+
+    """
     flow.address_components("entry", "text")
     flow.link_channels("text", "set")
     flow.commit_links()
@@ -151,10 +199,6 @@ def wire_default():
     flow.link_channels("clicked", "log")
     flow.commit_links()
 
-#    flow.address_components("button", "text")
-#    flow.link_channels("clicked", "set")
-#    flow.commit_links()
-
 
 # ================================================================
 # MAIN
@@ -162,14 +206,7 @@ def wire_default():
 
 def main():
     build_gui()
-
-    flow.register_component("entry", entry_activation)
-    flow.register_component("text", text_activation)
-    flow.register_component("button", button_activation)
-    flow.register_component("logger", logger_activation)
-
     wire_default()
-
     tick()
     ui["root"].mainloop()
 
