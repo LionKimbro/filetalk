@@ -1,0 +1,193 @@
+{
+  "document": {
+    "document-id": "filetalk.silkroad.architecture.v1",
+    "title": "FileTalk Silk Road Architecture",
+    "purpose": "Describe the architectural insights and patterns underlying the Silk Road (WayStation + Courier) communication model within FileTalk.",
+    "status": "draft",
+    "created": "2026-04-17",
+    "tags": ["filetalk", "silkroad", "waystation", "courier", "distributed-systems"]
+  },
+
+  "coordinates": {
+    "conversation-with-Wing-Cat": {"url": "https://chatgpt.com/c/69e2bb47-82f0-83e8-b08c-8989e5513a72", "date": "2026-04-17"}
+  },
+
+  "core_insight": {
+    "statement": "Programs communicate indirectly through persistent JSON artifacts placed in the filesystem, with delivery achieved by roaming agents (couriers) rather than direct addressing.",
+    "contrast": {
+      "traditional_systems": "Programs communicate via direct channels (TCP, HTTP, IPC) requiring known endpoints and active connectivity.",
+      "filetalk_silkroad": "Programs emit messages into a shared environment; discovery and delivery occur asynchronously through traversal and interpretation."
+    }
+  },
+
+  "foundational_primitives": {
+    "filetalk": {
+      "definition": "Use of files (JSON) as the primary medium for program-to-program communication.",
+      "properties": [
+        "persistent",
+        "inspectable by humans",
+        "decoupled from process lifetime",
+        "naturally buffered"
+      ]
+    },
+    "message": {
+      "definition": "A JSON artifact representing intent or data to be delivered.",
+      "properties": [
+        "self-describing",
+        "immutable or append-only",
+        "independent of transport path",
+        "addressed by semantic intent rather than fixed location"
+      ]
+    }
+  },
+
+  "communication_modes": {
+    "patchboard": {
+      "mode": "immediate",
+      "characteristics": [
+        "low latency",
+        "high frequency polling",
+        "known routing endpoints",
+        "centralized or preconfigured routing"
+      ],
+      "analogy": "nervous system / synaptic signaling"
+    },
+    "silkroad": {
+      "mode": "deferred",
+      "characteristics": [
+        "eventual delivery",
+        "low frequency traversal",
+        "discovery-based routing",
+        "tolerant of absence and delay"
+      ],
+      "analogy": "trade network / caravan routes"
+    }
+  },
+
+  "key_entities": {
+    "waystation": {
+      "definition": "A filesystem directory recognized as a resting and exchange point for messages and directives.",
+      "principles": [
+        "passive (does not execute logic)",
+        "declarative (expresses intent via files)",
+        "non-authoritative (does not enforce routing)",
+        "persistent across program lifetimes"
+      ],
+      "responsibilities": [
+        "hold messages",
+        "hold directives",
+        "expose minimal identity metadata"
+      ]
+    },
+    "courier": {
+      "definition": "A roaming process that traverses the filesystem, discovers WayStations, interprets directives, and transports messages.",
+      "properties": [
+        "asynchronous",
+        "stateless or lightly stateful",
+        "plural (multiple couriers may coexist)",
+        "policy-driven rather than hardcoded routing"
+      ],
+      "responsibilities": [
+        "discover WayStations",
+        "interpret directives",
+        "pick up and deliver messages",
+        "maintain soft knowledge (cache)"
+      ]
+    }
+  },
+
+  "waystation_structure": {
+    "description": "Canonical directory layout for a WayStation.",
+    "elements": {
+      "waystation.json": "Declares identity and basic properties.",
+      "messages/": "Holds message artifacts awaiting pickup or delivery.",
+      "directives/": "Contains user or system-authored instructions influencing courier behavior.",
+      "cache/": "Stores non-authoritative knowledge discovered by couriers.",
+      "logs/": "Optional record of courier activity and message movement."
+    }
+  },
+
+  "directives_pattern": {
+    "definition": "Local JSON artifacts that express intent to influence courier behavior.",
+    "examples": [
+      "request indexing of a directory",
+      "suggest exploration of a new path",
+      "prioritize certain message types",
+      "adjust traversal frequency"
+    ],
+    "properties": [
+      "imprecise and advisory",
+      "interpreted by couriers, not enforced",
+      "human-editable",
+      "location-dependent (contextual influence)"
+    ]
+  },
+
+  "routing_model": {
+    "description": "Messages are not routed by fixed paths but by discovery and interpretation.",
+    "properties": [
+      "no required global addressing scheme",
+      "identity resolved dynamically",
+      "multiple valid destinations may exist",
+      "delivery may occur via multiple hops"
+    ],
+    "implication": "Routing is an emergent property of courier behavior rather than a predefined map."
+  },
+
+  "identity_model": {
+    "description": "Soft identity based on names, tags, or capabilities rather than fixed locations.",
+    "properties": [
+      "non-unique identifiers allowed",
+      "resolution occurs at delivery time",
+      "compatible with M1-style identity merging",
+      "tolerates duplication and ambiguity"
+    ]
+  },
+
+  "temporal_properties": {
+    "description": "System behavior is shaped by time rather than immediacy.",
+    "properties": [
+      "eventual consistency",
+      "graceful degradation under delay",
+      "no requirement for simultaneous program availability",
+      "time becomes part of the routing mechanism"
+    ]
+  },
+
+  "resilience_characteristics": {
+    "properties": [
+      "survives process restarts",
+      "survives path changes",
+      "survives partial network visibility",
+      "fails slowly rather than abruptly"
+    ],
+    "mechanism": "Decoupling of message creation, transport, and delivery."
+  },
+
+  "human_interaction_model": {
+    "description": "Humans participate directly by editing files within WayStations.",
+    "capabilities": [
+      "influence routing without configuration systems",
+      "inject directives using simple JSON edits",
+      "inspect system state through filesystem",
+      "debug by observation rather than instrumentation"
+    ],
+    "principle": "The system remains legible and editable without specialized tools."
+  },
+
+  "design_principles": [
+    "Prefer persistence over immediacy",
+    "Prefer discovery over configuration",
+    "Prefer declarative intent over imperative control",
+    "Keep infrastructure passive; place intelligence in agents",
+    "Allow multiple interpretations rather than enforcing a single truth"
+  ],
+
+  "open_questions": [
+    "How should couriers prioritize competing directives?",
+    "What minimal conventions are required for interoperability?",
+    "How to prevent message duplication or infinite circulation?",
+    "What policies govern message expiration or garbage collection?",
+    "How to represent trust or permission in a decentralized filesystem?"
+  ]
+}
