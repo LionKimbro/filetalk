@@ -1,0 +1,143 @@
+{
+  "document": {
+    "document-id": "patchboard.spec.component-id-card.v1",
+    "title": "Component ID Card Specification",
+    "tags": [
+      "patchboard",
+      "filetalk"
+    ],
+    "type": {
+      "logical": {
+        "base": "file",
+        "format": "json",
+        "encoding": "utf-8"
+      },
+      "semantic": {
+        "base": "spec"
+      }
+    },
+    "purpose": "Define the Component ID Card: its schema, its self-announcement convention, and the two methods by which Patchboard Atlas ingests one."
+  },
+  "overview": {
+    "summary": "A Component ID Card is a JSON object that a running FileTalk component uses to describe itself to the outside world. It declares the component's human-readable title, its inbox and outbox folder paths, and the channel names it expects and emits. Patchboard Atlas consumes these cards to populate its component inventory and render wirable components on the canvas.",
+    "what-it-is-not": [
+      "A type definition or class descriptor -- it describes a single running instance",
+      "A routing configuration -- routing topology lives in the router's routes.json",
+      "An execution descriptor -- it carries no information about how to launch the component",
+      "A liveness signal -- the card does not imply the component is currently healthy"
+    ]
+  },
+  "schema": {
+    "description": "A Component ID Card is a plain JSON object conforming to the following structure.",
+    "record-format": {
+      "schema_version": {
+        "type": "integer",
+        "required": true,
+        "constraint": "Must equal 1",
+        "description": "Version of the Component ID Card schema. Must be exactly 1."
+      },
+      "title": {
+        "type": "string",
+        "required": true,
+        "description": "Human-readable name for this running component instance."
+      },
+      "inbox": {
+        "type": "string",
+        "required": true,
+        "constraint": "Must be a non-empty absolute filesystem path",
+        "description": "Canonical absolute path to the folder where this component reads incoming messages."
+      },
+      "outbox": {
+        "type": "string",
+        "required": true,
+        "constraint": "Must be a non-empty absolute filesystem path",
+        "description": "Canonical absolute path to the folder where this component writes outgoing messages."
+      },
+      "channels": {
+        "type": "object",
+        "required": true,
+        "description": "Declares the channel names this component participates in.",
+        "fields": {
+          "in": {
+            "type": "array of strings",
+            "required": true,
+            "constraint": "No duplicate names",
+            "description": "Channel names this component expects in its inbox.  Note that: It may usefully use signals targeting other channels.  But these are expected channel names."
+          },
+          "out": {
+            "type": "array of strings",
+            "required": true,
+            "constraint": "No duplicate names",
+            "description": "Channel names this component emits from its outbox."
+          }
+        }
+      }
+    },
+    "example": {
+      "schema_version": 1,
+      "title": "Patchboard Router",
+      "inbox": "F:\\lion\\github\\filetalk\\.patchboard-router\\INBOX",
+      "outbox": "F:\\lion\\github\\filetalk\\.patchboard-router\\OUTBOX",
+      "channels": {
+        "in": [
+          "link",
+          "unlink",
+          "quit"
+        ],
+        "out": [
+          "change-notice",
+          "startup",
+          "shutdown"
+        ]
+      }
+    },
+    "invariants": [
+      "schema_version must equal exactly 1.",
+      "inbox and outbox must be absolute paths.",
+      "Channel names within 'in' must be unique. Channel names within 'out' must be unique.",
+      "The card describes a single running instance, not a component type."
+    ]
+  },
+  "delivery-methods": {
+    "description": "There are two ways to deliver a Component ID Card to Patchboard Atlas.",
+    "method-1-channel-message": {
+      "name": "Channel message",
+      "channel": "component-id-card",
+      "how": "Send a standard Patchboard Core message to Atlas's inbox with channel set to 'component-id-card'. The signal field of that message is the Component ID Card object itself.",
+      "message-shape": {
+        "channel": "component-id-card",
+        "signal": "<Component ID Card object>",
+        "timestamp": "<unix timestamp string>"
+      },
+      "atlas-behavior": "When Atlas reads a message on channel 'component-id-card' from its inbox, it validates the signal as a Component ID Card and, if valid, immediately ingests the component into its registry."
+    },
+    "method-2-file-path": {
+      "name": "File path import",
+      "how": "Provide Atlas with a filesystem path to a JSON file whose contents are a Component ID Card object. Atlas reads and validates the file, then ingests the card.",
+      "current-ui": "Exposed as 'File > Import Card...' (single file) and 'File > Import Card Folder...' (all *.json in a directory) in the Patchboard Atlas GUI.",
+      "atlas-behavior": "Atlas reads the file, validates it against the schema, and ingests it if valid. On failure, the card is silently skipped (with a count reported to the UI)."
+    }
+  },
+  "self-announcement-convention": {
+    "description": "A component SHOULD announce itself at startup by writing its own Component ID Card as a Patchboard message.",
+    "convention": "On startup, a component writes a message to its own OUTBOX with channel 'component-id-card' and its own ID card as the signal. Once a route exists from the component's OUTBOX to Atlas's INBOX (on any channel, or specifically 'component-id-card'), Atlas will automatically receive and ingest the card.",
+    "rationale": [
+      "Enables automatic discovery once a routing link is established.",
+      "Allows the card to flow through normal Patchboard routing infrastructure without special bootstrap steps.",
+      "The component-id-card.json file on disk and the startup message carry the same payload -- one is for human/tool discovery, the other for live protocol ingestion."
+    ],
+    "bootstrap-note": "Because Atlas cannot route to a component it has not yet ingested, the very first introduction of a component to Atlas must use method-2 (file path). Once Atlas knows the component's outbox, it can establish a route and receive future self-announcements automatically."
+  },
+  "disk-file-convention": {
+    "description": "A component MAY also write its Component ID Card to a well-known file on disk for out-of-band discovery.",
+    "convention": "A component that uses a project directory (e.g. '.patchboard-router/') MAY write its Component ID Card to '<project-dir>/component-id-card.json' at startup.",
+    "purpose": "Allows humans and tools (including Atlas via file import) to locate a component's card without knowing anything about its runtime messaging state.",
+    "relationship-to-message": "The file and the channel message carry identical payloads. The file is a static artifact; the message is the live protocol event."
+  },
+  "atlas-ingestion-behavior": {
+    "keying": "Atlas keys each ingested card by the canonical (normalized, absolute) form of its inbox path. Ingesting a card whose inbox key already exists replaces the prior entry.",
+    "persistence": "Valid ingested cards are persisted to Atlas's project directory under 'component-id-cards/' so they survive across Atlas restarts.",
+    "startup-culling": "At startup, Atlas validates all persisted cards by checking that their inbox and outbox paths exist as directories on disk. Cards whose folders no longer exist are removed from the registry and their persisted files are deleted.",
+    "ecs-entity": "Each successfully ingested card results in the creation of an ECS entity in Atlas, which is then projected into the component tree and rendered on the canvas."
+  }
+}

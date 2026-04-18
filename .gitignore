@@ -70,3 +70,5 @@ venv.bak/
 
 # Lion's Own additions
 local/
+.claude/
+.patchboard-router/

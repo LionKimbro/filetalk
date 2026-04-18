@@ -2,6 +2,20 @@
   "document": {
     "document-id": "patchboard.spec.messages.file-transport.v1",
     "title": "Patchboard File Transport Profile",
+    "tags": [
+      "patchboard",
+      "filetalk"
+    ],
+    "type": {
+      "logical": {
+        "base": "file",
+        "format": "json",
+        "encoding": "utf-8"
+      },
+      "semantic": {
+        "base": "spec"
+      }
+    },
     "purpose": "Documents how Patchboard messages transport on the filesystem."
   },
   "specification": {

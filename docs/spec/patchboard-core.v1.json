@@ -2,6 +2,19 @@
   "document": {
     "document-id": "patchboard.spec.messages.core.v1",
     "title": "Patchboard Core Message Specification",
+    "tags": [
+      "patchboard"
+    ],
+    "type": {
+      "logical": {
+        "base": "file",
+        "format": "json",
+        "encoding": "utf-8"
+      },
+      "semantic": {
+        "base": "spec"
+      }
+    },
     "purpose": "Define the Patchboard system, and the core Patchboard message in particular."
   },
   "specification": {
