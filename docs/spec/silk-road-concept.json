@@ -9,8 +9,10 @@
   },
 
   "coordinates": {
-    "conversation-with-Wing-Cat": {"url": "https://chatgpt.com/c/69e2bb47-82f0-83e8-b08c-8989e5513a72", "date": "2026-04-17"},
-    "another-conversation-with-Wing-Cat": {"url": "https://chatgpt.com/c/69eb94b1-69e8-83e8-b57e-6c1833822b3f", "date": "unknown, but prior to 2026-04-24"}
+    "conversation-with-Wing-Cat": {"url": "https://chatgpt.com/c/69e2bb47-82f0-83e8-b08c-8989e5513a72", "date": "2026-04-17", "notes": ["original conversation about Silk Road with Wing-Cat, from the side of the road while out with Robert", "original waystation design", "agent model", "battery runner (and bproc) introduction", "shared memory", "bazaar, wanted files", "network topology & discovery", "initial concrete use cases", "sign maker development"]},
+    "another-conversation-with-Wing-Cat": {"url": "https://chatgpt.com/c/69eb94b1-69e8-83e8-b57e-6c1833822b3f", "date": "unknown, but prior to 2026-04-24", "notes": ["fit"]},
+    "building-the-battery-runner": {"url": "https://chatgpt.com/c/69e3d521-08f8-83e8-9110-4f9f04edd1b3", "date": "unknown, prior to 2026-04-29 for sure", "notes": ["building the Battery Runner", "bproc model development", "tkinter design", "error handling", "scheduling", "architecture"]},
+    "demand-driven-silk-road": {"url": "https://chatgpt.com/c/69f03b27-7d24-83e8-babf-409172efde6c", "date": "unknown, prior to 2026-04-29 for sure, but probably not before 4/22", "notes": ["the idea of programs asking for files to be located nearby, by sherpas, rather than getting a path to the file", "document format for a request"]}
   },
 
   "core_insight": {
